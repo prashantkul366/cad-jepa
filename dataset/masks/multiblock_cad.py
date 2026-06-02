@@ -1,44 +1,55 @@
 """
-1D CAD Multi-Block Mask Collator
-Adapted from multiblock_ijepa_reference.py for 1D CAD sequences.
+CAD Multi-Block Mask Collator
 
-Differences from I-JEPA:
-  - No 2D grid; blocks are [start, end] ranges in a 1D token sequence
-  - Block boundaries come from SemanticBlockParser, not spatial sampling
-  - Replaces aspect_ratio/scale sampling with semantic block lengths
+Structure mirrors I-JEPA's MaskCollator.__call__:
+  - default_collate the batch
+  - per-item: parse blocks, sample masks
+  - return (commands, args, context_mask, target_mask)
 
-Used as collate_fn in the DataLoader.
+Replaces I-JEPA's 2D spatial block sampling with parse_blocks + sample_mask.
 """
 
-from typing import List, Tuple
-
 import torch
+from torch.utils.data import default_collate
+from typing import List, Dict, Tuple
 
-from dataset.masks.semantic_block import SemanticBlockParser, SemanticBlockMasker
+from dataset.masks.semantic_block import parse_blocks, sample_mask
 
 
-class CADMultiBlockMaskCollator:
+class CADMaskCollator:
+    """
+    DataLoader collate_fn for CAD-JEPA pretraining.
+
+    Returns:
+      commands     : [B, S]       int64
+      args         : [B, S, 16]   int64
+      context_mask : [B, S]       bool  True = hide from context encoder
+      target_mask  : [B, S]       bool  True = predictor must predict here
+    """
 
     def __init__(self, mask_ratio: float = 0.5, min_visible: int = 1):
-        self.parser = SemanticBlockParser()
-        self.masker = SemanticBlockMasker(mask_ratio, min_visible)
+        self.mask_ratio  = mask_ratio
+        self.min_visible = min_visible
 
-    def __call__(
-        self, batch: List[torch.Tensor]
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        batch: List of [T_i, 17] tensors (variable length from CADDataset)
+    def __call__(self, batch: List[Dict]) -> Tuple[torch.Tensor, ...]:
+        # Step 1: collate raw batch (mirrors I-JEPA default_collate)
+        collated = default_collate(batch)
+        commands = collated['command']    # [B, S]
+        args     = collated['args']       # [B, S, 16]
+        B, S     = commands.shape
 
-        returns:
-            padded_tokens : [B, T_max, 17]
-            context_mask  : [B, T_max] bool  True = visible to context encoder
-            target_mask   : [B, T_max] bool  True = positions predictor must predict
+        context_mask = torch.zeros(B, S, dtype=torch.bool)
+        target_mask  = torch.zeros(B, S, dtype=torch.bool)
 
-        TODO:
-          For each seq:
-            blocks = self.parser.parse(seq)
-            vis_ids, msk_ids = self.masker.sample(blocks)
-            build boolean context_mask and target_mask of length T_i
-          Pad all to T_max (False for padding positions in both masks)
-        """
-        pass
+        # Step 2: per-item block parsing + mask sampling
+        # (mirrors I-JEPA's per-image loop)
+        for i in range(B):
+            blocks = parse_blocks(commands[i])
+            visible_ops, masked_ops = sample_mask(
+                blocks, self.mask_ratio, self.min_visible)
+
+            if masked_ops:
+                context_mask[i, masked_ops] = True   # hide from context encoder
+                target_mask[i,  masked_ops] = True   # predictor predicts these
+
+        return commands, args, context_mask, target_mask

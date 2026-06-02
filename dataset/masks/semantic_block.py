@@ -1,95 +1,101 @@
 """
-CAD Semantic Block Parser  (state machine over command types, no ML)
+CAD Semantic Block Parser
 
-Block types (paper section 3.3):
-  SKETCH_EXTRUDE : SOF -> [Line/Arc/Circle]* -> SOL -> SOE -> Extrude
-  FILLET_GROUP   : consecutive Fillet ops on a shared edge set
-  BOOLEAN        : Cut / Join / Intersect operation
-  PATTERN        : PolarArray or LinearArray
+State machine over command type sequence using cadlib.macro constants.
 
-Usage:
-    parser  = SemanticBlockParser()
-    blocks  = parser.parse(token_sequence)      # List[Block]
-    masker  = SemanticBlockMasker(0.5)
-    vis_ids, msk_ids = masker.sample(blocks)
+A block = one sketch-extrude feature:
+  SOL ... [LINE/ARC/CIRCLE] ... SOL ... [prims] ... EXT
+  Everything from the first SOL up to and including EXT = one block.
+
+Example:
+  [4,0,0,0,4,2,4,2,5,  4,2,5,  3,3,3]
+   └──────block 0─────┘└─block1┘ EOS
 """
 
-import math
 import random
 from dataclasses import dataclass
-from enum import Enum
 from typing import List, Tuple
 
 import torch
 
-
-class BlockType(Enum):
-    SKETCH_EXTRUDE = "sketch_extrude"
-    FILLET_GROUP   = "fillet_group"
-    BOOLEAN        = "boolean"
-    PATTERN        = "pattern"
-    OTHER          = "other"
+LINE_IDX, ARC_IDX, CIRCLE_IDX = 0, 1, 2
+EOS_IDX, SOL_IDX, EXT_IDX     = 3, 4, 5
+SKETCH_PRIMS = {LINE_IDX, ARC_IDX, CIRCLE_IDX}
 
 
 @dataclass
 class Block:
-    block_type : BlockType
-    start_idx  : int
-    end_idx    : int
+    start: int
+    end:   int
 
     @property
-    def length(self) -> int:
-        return self.end_idx - self.start_idx + 1
-
-    def token_indices(self) -> List[int]:
-        return list(range(self.start_idx, self.end_idx + 1))
+    def indices(self) -> List[int]:
+        return list(range(self.start, self.end + 1))
 
 
-class SemanticBlockParser:
+def parse_blocks(command_seq: torch.Tensor) -> List[Block]:
     """
-    Parses a [T, 17] token sequence into a list of semantic blocks.
-    Command type constants live in cadlib/macro.py — import them in __init__.
+    Parse command sequence into semantic blocks.
+    command_seq: [S] int64 tensor
     """
+    cmds        = command_seq.tolist()
+    blocks      = []
+    block_start = None
 
-    def __init__(self):
-        # TODO: import from cadlib.macro
-        # e.g.  from cadlib.macro import SOF_IDX, SOL_IDX, SOE_IDX, ...
-        # Store as self.CMD_SOF, self.CMD_SOL, etc.
-        pass
+    for i, cmd in enumerate(cmds):
+        if cmd == EOS_IDX:
+            if block_start is not None:
+                blocks.append(Block(block_start, i - 1))
+                block_start = None
+            break
 
-    def parse(self, tokens: torch.Tensor) -> List[Block]:
-        """
-        tokens: [T, 17]  column 0 = command type integer
-        returns: List[Block] covering the full sequence
+        elif cmd == SOL_IDX:
+            if block_start is None:
+                block_start = i          # open a new block
 
-        TODO: implement state machine
-          State IDLE:
-            on CMD_SOF  -> enter IN_SKETCH, record start_idx = current
-          State IN_SKETCH:
-            on CMD_SOE  -> transition to IN_EXTRUDE
-          State IN_EXTRUDE:
-            on CMD_SOF or CMD_EOS -> close block as SKETCH_EXTRUDE, back to IDLE
-          Fillet / Boolean / Pattern ops -> wrap each as a 1-token block
-          Any remaining tokens -> BlockType.OTHER
-        """
-        pass
+        elif cmd == EXT_IDX:
+            if block_start is not None:
+                blocks.append(Block(block_start, i))   # EXT closes the block
+                block_start = None
+            else:
+                blocks.append(Block(i, i))             # orphan EXT
+
+        elif cmd in SKETCH_PRIMS:
+            if block_start is None:
+                block_start = i          # orphan primitive, open block
+
+    # Close any unclosed block (sketch without EXT)
+    if block_start is not None:
+        last = max(block_start,
+                   max((i for i, c in enumerate(cmds) if c != EOS_IDX), default=block_start))
+        blocks.append(Block(block_start, last))
+
+    # Fallback: too short — treat each op as its own block
+    if len(blocks) < 2:
+        n = sum(1 for c in cmds if c != EOS_IDX)
+        blocks = [Block(i, i) for i in range(n)]
+
+    return blocks
 
 
-class SemanticBlockMasker:
+def sample_mask(
+    blocks: List[Block],
+    mask_ratio: float = 0.5,
+    min_visible: int  = 1,
+) -> Tuple[List[int], List[int]]:
+    """
+    Randomly choose blocks to mask.
+    Returns (visible_op_indices, masked_op_indices) sorted.
+    """
+    n      = len(blocks)
+    n_mask = max(1, round(mask_ratio * n))
+    n_mask = min(n_mask, n - min_visible)
 
-    def __init__(self, mask_ratio: float = 0.5, min_visible: int = 1):
-        self.mask_ratio  = mask_ratio
-        self.min_visible = min_visible
+    idx = list(range(n))
+    random.shuffle(idx)
+    masked_blocks  = set(idx[:n_mask])
+    visible_blocks = set(idx[n_mask:])
 
-    def sample(self, blocks: List[Block]) -> Tuple[List[int], List[int]]:
-        """
-        Randomly choose which blocks to mask.
-        Returns flat token index lists: (visible_ids, masked_ids)
-
-        TODO:
-          n_mask = ceil(mask_ratio * len(blocks))
-          clamp so at least min_visible blocks stay visible
-          shuffle block indices, split into masked / visible
-          flatten each group to token indices via block.token_indices()
-        """
-        pass
+    visible_ops = sorted(i for b in visible_blocks for i in blocks[b].indices)
+    masked_ops  = sorted(i for b in masked_blocks  for i in blocks[b].indices)
+    return visible_ops, masked_ops

@@ -1,68 +1,61 @@
 """
-CAD-JEPA Pretraining Configuration
-All values taken directly from the paper unless marked TUNE.
+CAD-JEPA Configuration
+Attribute names aligned with DeepCAD convention so CADEmbedding/Encoder work directly.
 """
 
-
 class ConfigJEPA:
-    # Model
-    encoder_layers    = 12
-    encoder_dim       = 768
-    encoder_heads     = 8
-    encoder_dropout   = 0.0
+    # ── Encoder (names match DeepCAD's CADEmbedding + Encoder) ────────────
+    n_commands      = 6       # LINE ARC CIRCLE EOS SOL EXT
+    d_model         = 256     # start with 256 (same as DeepCAD AE); scale to 768 later
+    n_heads         = 8
+    dim_feedforward = 1024    # 4 × d_model
+    dropout         = 0.1
+    n_layers        = 12      # context encoder depth
+    args_dim        = 256     # ARGS_DIM from macro.py
+    n_args          = 16      # N_ARGS from macro.py
+    max_total_len   = 60      # MAX_TOTAL_LEN from macro.py
+
+    # ── Predictor ──────────────────────────────────────────────────────────
+    predictor_d       = 128   # narrow: half of d_model
     predictor_layers  = 3
-    predictor_dim     = 256
 
-    # Tokenizer  (DeepCAD cad_vec format)
-    num_commands      = 8        # Line Arc Circle EOS SOL SOF SOE Extrude
-    num_params        = 16
-    param_vocab_size  = 257      # 0-255 quantized + 256 padding
-    max_seq_len       = 80
-
-    # EMA
+    # ── EMA ────────────────────────────────────────────────────────────────
     ema_tau           = 0.996
     ema_tau_start     = 0.990
-    ema_tau_warmup    = 40       # epochs
+    ema_tau_warmup    = 40
 
-    # Masking
+    # ── Masking ────────────────────────────────────────────────────────────
     mask_ratio        = 0.50
     min_blocks_visible = 1
 
-    # Training
+    # ── Training ───────────────────────────────────────────────────────────
     epochs            = 300
     batch_size        = 256
     lr                = 1.5e-4
-    lr_warmup_epochs  = 20
+    lr_min            = 1e-6
+    lr_warmup_epochs  = 40
     weight_decay      = 0.05
     grad_clip         = 1.0
 
-    # Collapse prevention (VICReg — safety net, rarely fires)
+    # ── Collapse prevention ────────────────────────────────────────────────
     vicreg_lambda_v   = 25.0
     vicreg_lambda_c   = 1.0
     rank_threshold    = 0.70
 
-    # Data
-    data_root         = "./data/cad_json"
-    vec_root          = "./data/cad_vec"
-    train_split       = "./data/train_val_test_split.json"
-    num_workers       = 8
+    # ── Data ───────────────────────────────────────────────────────────────
+    data_root         = '/content'
+    augment           = False
+    num_workers       = 4
+    train_split_key   = 'train'
+    val_split_key     = 'validation'
 
-    # Checkpointing
-    ckpt_dir          = "./checkpoints/pretrain"
+    # ── Checkpointing ──────────────────────────────────────────────────────
+    ckpt_dir          = './checkpoints/pretrain'
+    log_dir           = './logs/pretrain'
+    model_dir         = './checkpoints/pretrain'
     save_every        = 50
-    log_every         = 10
+    log_interval      = 50
 
-    # Stage 2 text bridge
-    clip_model        = "openai/clip-vit-base-patch32"
-    bridge_hidden_dim = 1024
-    bridge_lr         = 1e-4
-    bridge_epochs     = 50
-    encoded_z_path    = "./data/encoded_z.h5"
-
-    # Stage 3 decoder
-    decoder_layers    = 4
-    decoder_dim       = 512
-    decoder_heads     = 8
-    decoder_lr        = 1e-4
-    decoder_epochs    = 100
-    beam_size         = 5
+    # ── Stage 2 / 3 (fill in later) ───────────────────────────────────────
+    dim_z             = 256   # same as d_model (no bottleneck in JEPA)
+    n_layers_decode   = 4
