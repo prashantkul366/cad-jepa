@@ -78,7 +78,9 @@ class TransformerDecoderLayerImproved(Module):
             state['activation'] = F.relu
         super(TransformerDecoderLayerImproved, self).__setstate__(state)
 
-    def forward(self, tgt, memory, tgt_mask=None, memory_mask=None,
+    # def forward(self, tgt, memory, tgt_mask=None, memory_mask=None,
+    #             tgt_key_padding_mask=None, memory_key_padding_mask=None):
+    def forward(self, tgt, memory, memory2=None, tgt_mask=None, memory_mask=None,
                 tgt_key_padding_mask=None, memory_key_padding_mask=None):
         tgt1 = self.norm1(tgt)
         tgt2 = self.self_attn(tgt1, tgt1, tgt1, attn_mask=tgt_mask, key_padding_mask=tgt_key_padding_mask)[0]
