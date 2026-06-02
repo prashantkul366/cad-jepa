@@ -14,6 +14,8 @@ class ConfigJEPA:
     args_dim        = 256     # ARGS_DIM from macro.py
     n_args          = 16      # N_ARGS from macro.py
     max_total_len   = 60      # MAX_TOTAL_LEN from macro.py
+    max_n_loops     = 6       # N_P  – max sketch loops per extrusion
+    max_n_curves    = 6       # N_C  – max curves per loop
 
     # ── Predictor ──────────────────────────────────────────────────────────
     predictor_d       = 128   # narrow: half of d_model
@@ -59,6 +61,4 @@ class ConfigJEPA:
     # ── Stage 2 / 3 (fill in later) ───────────────────────────────────────
     dim_z             = 256   # same as d_model (no bottleneck in JEPA)
     n_layers_decode   = 4
-    max_total_len   = 60      # MAX_TOTAL_LEN from macro.py
-    max_n_loops     = 6       # N_P  – max sketch loops per extrusion
-    max_n_curves    = 6       # N_C  – max curves per loop
+    
