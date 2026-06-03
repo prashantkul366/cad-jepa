@@ -40,8 +40,10 @@ class ConfigJEPA:
     grad_clip         = 1.0
 
     # ── Collapse prevention ────────────────────────────────────────────────
-    vicreg_lambda_v   = 25.0
-    vicreg_lambda_c   = 1.0
+    # vicreg_lambda_v   = 25.0
+    # vicreg_lambda_c   = 1.0
+    vicreg_lambda_v = 5.0    # was 25.0
+    vicreg_lambda_c = 0.1    # was 1.0
     rank_threshold    = 0.70
 
     # ── Data ───────────────────────────────────────────────────────────────
