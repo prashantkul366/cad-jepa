@@ -96,9 +96,9 @@ class TrainerJEPA:
 
         # Step 7 — VICReg safety net
         self.monitor.effective_rank(h_ctx)
-        if self.monitor.is_collapsing():
-            loss = loss + self.monitor.regularization_loss(
-                h_ctx, self.cfg.vicreg_lambda_v, self.cfg.vicreg_lambda_c)
+        # if self.monitor.is_collapsing():
+        #     loss = loss + self.monitor.regularization_loss(
+        #         h_ctx, self.cfg.vicreg_lambda_v, self.cfg.vicreg_lambda_c)
 
         return loss
 
