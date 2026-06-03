@@ -27,8 +27,13 @@ class CADPredictor(nn.Module):
         self.mask_token   = nn.Embedding(cfg.max_total_len, d_pred)
 
         # TransformerDecoderLayerImproved: queries cross-attend to context
+        # decoder_layer = TransformerDecoderLayerImproved(
+        #     d_model=d_pred, nhead=4,
+        #     dim_feedforward=d_pred * 4,
+        #     dropout=0.0,          # no dropout in predictor
+        # )
         decoder_layer = TransformerDecoderLayerImproved(
-            d_model=d_pred, nhead=4,
+            d_model=d_pred, nhead=cfg.predictor_heads,
             dim_feedforward=d_pred * 4,
             dropout=0.0,          # no dropout in predictor
         )

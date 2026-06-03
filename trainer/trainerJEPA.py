@@ -95,8 +95,8 @@ class TrainerJEPA:
                 h_tgt_masked[b, :n_real].detach())
         # loss = loss / B
         loss = loss / B
-        pred_scale = min(1.0, epoch / 20.0)
-        loss = pred_scale * loss
+        # pred_scale = min(1.0, epoch / 20.0)
+        # loss = pred_scale * loss
 
         # Step 7 — VICReg safety net
         # self.monitor.effective_rank(h_ctx)

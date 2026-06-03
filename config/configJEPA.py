@@ -30,8 +30,10 @@ class ConfigJEPA:
     # ema_tau_start     = 0.990
     # ema_tau_warmup    = 40
 
-    ema_tau_start  = 0.996
-    ema_tau_warmup = 1      # effectively disables warmup
+    # ema_tau_start  = 0.996
+    # ema_tau_warmup = 1      # effectively disables warmup
+    ema_tau_start  = 0.990
+    ema_tau_warmup = 40
 
     # ── Masking ────────────────────────────────────────────────────────────
     mask_ratio        = 0.50
@@ -47,8 +49,10 @@ class ConfigJEPA:
     grad_clip         = 1.0
 
     # ── Collapse prevention ────────────────────────────────────────────────
-    vicreg_lambda_v   = 25.0
-    vicreg_lambda_c   = 1.0
+    # vicreg_lambda_v   = 25.0
+    # vicreg_lambda_c   = 1.0
+    vicreg_lambda_v = 5.0
+    vicreg_lambda_c = 0.1
     # vicreg_lambda_v = 5.0    # was 25.0
     # vicreg_lambda_c = 0.1    # was 1.0
     rank_threshold    = 0.70

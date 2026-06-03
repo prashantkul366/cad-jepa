@@ -21,7 +21,8 @@ class CollapseMonitor:
         h_flat = h.detach().reshape(-1, self.encoder_dim).float()
         if h_flat.shape[0] < 2:
             return 1.0
-        _, s, _ = torch.pca_lowrank(h_flat, q=min(64, self.encoder_dim))
+        # _, s, _ = torch.pca_lowrank(h_flat, q=min(64, self.encoder_dim))
+        _, s, _ = torch.pca_lowrank(h_flat, q=min(self.encoder_dim, h_flat.shape[0] - 1))
         s = s ** 2
         cumvar = torch.cumsum(s / s.sum(), dim=0)
         rank = int((cumvar < 0.99).sum().item()) + 1
