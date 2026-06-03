@@ -46,6 +46,7 @@ class CADJEPAEncoder(nn.Module):
         encoder_layer  = TransformerEncoderLayerImproved(
             cfg.d_model, cfg.n_heads, cfg.dim_feedforward, cfg.dropout)
         self.encoder   = TransformerEncoder(encoder_layer, cfg.n_layers, LayerNorm(cfg.d_model))
+        self.output_norm = nn.LayerNorm(cfg.d_model)  
 
     def forward(self, commands, args, jepa_mask=None):
         """
@@ -68,8 +69,9 @@ class CADJEPAEncoder(nn.Module):
 
         # JEPA CHANGE 2: no bottleneck — return full d_model
         # JEPA CHANGE 3: return ALL positions, not mean-pooled
-        return _make_batch_first(memory)                           # [N,S,d]
-
+        # return _make_batch_first(memory)                           # [N,S,d]
+        return self.output_norm(_make_batch_first(memory))
+    
     @torch.no_grad()
     def encode_mean(self, commands, args):
         """Mean-pool over valid positions → single vector. Used for retrieval / Stage 2."""
