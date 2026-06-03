@@ -100,11 +100,21 @@ class TrainerJEPA:
 
         # Step 7 — VICReg safety net
         # self.monitor.effective_rank(h_ctx)
+        # with torch.amp.autocast("cuda", enabled=False):
+        #     self.monitor.effective_rank(h_ctx.float().detach())
+        #     if self.monitor.is_collapsing():
+        #         loss = loss + self.monitor.regularization_loss(
+        #             h_ctx.float(), self.cfg.vicreg_lambda_v, self.cfg.vicreg_lambda_c)
+
+        # Only real (non-EOS, non-padding) tokens for rank and VICReg
+        valid_mask  = (commands != 3)            # [B, S], EOS_IDX=3
+        h_ctx_valid = h_ctx[valid_mask]          # [N_valid, d]
+
         with torch.amp.autocast("cuda", enabled=False):
-            self.monitor.effective_rank(h_ctx.float().detach())
+            self.monitor.effective_rank(h_ctx_valid.float().detach())
             if self.monitor.is_collapsing():
                 loss = loss + self.monitor.regularization_loss(
-                    h_ctx.float(), self.cfg.vicreg_lambda_v, self.cfg.vicreg_lambda_c)
+                    h_ctx_valid.float(), self.cfg.vicreg_lambda_v, self.cfg.vicreg_lambda_c)
 
         return loss
 
