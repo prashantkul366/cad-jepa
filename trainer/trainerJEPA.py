@@ -96,7 +96,8 @@ class TrainerJEPA:
         loss = loss / B
 
         # Step 7 — VICReg safety net
-        self.monitor.effective_rank(h_ctx)
+        # self.monitor.effective_rank(h_ctx)
+        self.monitor.effective_rank(h_ctx.float().detach())
         # if self.monitor.is_collapsing():
         #     loss = loss + self.monitor.regularization_loss(
         #         h_ctx, self.cfg.vicreg_lambda_v, self.cfg.vicreg_lambda_c)
@@ -114,7 +115,8 @@ class TrainerJEPA:
         for commands, args, ctx_mask, tgt_mask in self.loader:
             self.optimizer.zero_grad()
             # loss = self.train_step(commands, args, ctx_mask, tgt_mask)
-            with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+            # with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+            with torch.amp.autocast('cuda', dtype=torch.bfloat16):
                 loss = self.train_step(commands, args, ctx_mask, tgt_mask)
             loss.backward()
             nn.utils.clip_grad_norm_(
