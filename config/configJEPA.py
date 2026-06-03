@@ -23,7 +23,7 @@ class ConfigJEPA:
     # predictor_d       = 128   # narrow: half of d_model
     predictor_d       = 256   # narrow: half of d_model
     predictor_layers  = 3
-    predictor_heads : 8
+    predictor_heads = 8
 
     # ── EMA ────────────────────────────────────────────────────────────────
     ema_tau           = 0.996
@@ -44,10 +44,10 @@ class ConfigJEPA:
     grad_clip         = 1.0
 
     # ── Collapse prevention ────────────────────────────────────────────────
-    # vicreg_lambda_v   = 25.0
-    # vicreg_lambda_c   = 1.0
-    vicreg_lambda_v = 5.0    # was 25.0
-    vicreg_lambda_c = 0.1    # was 1.0
+    vicreg_lambda_v   = 25.0
+    vicreg_lambda_c   = 1.0
+    # vicreg_lambda_v = 5.0    # was 25.0
+    # vicreg_lambda_c = 0.1    # was 1.0
     rank_threshold    = 0.70
 
     # ── Data ───────────────────────────────────────────────────────────────
