@@ -45,7 +45,7 @@ class TrainerJEPA:
         )
 
     # ── training step ─────────────────────────────────────────────────────
-    def train_step(self, commands, args, context_mask, target_mask):
+    def train_step(self, commands, args, context_mask, target_mask, epoch=1):
         commands     = commands.to(self.device)
         args         = args.to(self.device)
         context_mask = context_mask.to(self.device)
@@ -93,7 +93,10 @@ class TrainerJEPA:
             loss += F.smooth_l1_loss(
                 h_pred[b, :n_real],
                 h_tgt_masked[b, :n_real].detach())
+        # loss = loss / B
         loss = loss / B
+        pred_scale = min(1.0, epoch / 20.0)
+        loss = pred_scale * loss
 
         # Step 7 — VICReg safety net
         # self.monitor.effective_rank(h_ctx)
@@ -117,8 +120,10 @@ class TrainerJEPA:
             self.optimizer.zero_grad()
             # loss = self.train_step(commands, args, ctx_mask, tgt_mask)
             # with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+            # with torch.amp.autocast('cuda', dtype=torch.bfloat16):
+            #     loss = self.train_step(commands, args, ctx_mask, tgt_mask)
             with torch.amp.autocast('cuda', dtype=torch.bfloat16):
-                loss = self.train_step(commands, args, ctx_mask, tgt_mask)
+                loss = self.train_step(commands, args, ctx_mask, tgt_mask, epoch)
             loss.backward()
             nn.utils.clip_grad_norm_(
                 list(self.enc.parameters()) + list(self.pred.parameters()),

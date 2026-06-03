@@ -27,8 +27,11 @@ class ConfigJEPA:
 
     # ── EMA ────────────────────────────────────────────────────────────────
     ema_tau           = 0.996
-    ema_tau_start     = 0.990
-    ema_tau_warmup    = 40
+    # ema_tau_start     = 0.990
+    # ema_tau_warmup    = 40
+
+    ema_tau_start  = 0.996
+    ema_tau_warmup = 1      # effectively disables warmup
 
     # ── Masking ────────────────────────────────────────────────────────────
     mask_ratio        = 0.50
