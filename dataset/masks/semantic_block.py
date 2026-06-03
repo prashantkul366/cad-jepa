@@ -55,7 +55,9 @@ def parse_blocks(command_seq: torch.Tensor) -> List[Block]:
 
         elif cmd == EXT_IDX:
             if block_start is not None:
-                blocks.append(Block(block_start, i))   # EXT closes the block
+                # blocks.append(Block(block_start, i))   # EXT closes the block
+                blocks.append(Block(block_start, i - 1))   # sketch block ends before EXT
+                blocks.append(Block(i, i))  # treat EXT as its own block (helps with short blocks and orphan EXT)
                 block_start = None
             else:
                 blocks.append(Block(i, i))             # orphan EXT
@@ -98,4 +100,16 @@ def sample_mask(
 
     visible_ops = sorted(i for b in visible_blocks for i in blocks[b].indices)
     masked_ops  = sorted(i for b in masked_blocks  for i in blocks[b].indices)
+
+    # ADD before the return statement:
+    MAX_MASK_RATIO = 0.55
+    all_token_count = sum(b.end - b.start + 1 for b in blocks)
+    while True:
+        masked_count = sum(blocks[b].end - blocks[b].start + 1 for b in masked_blocks)
+        if masked_count / max(all_token_count, 1) <= MAX_MASK_RATIO:
+            break
+        largest = max(masked_blocks, key=lambda b: blocks[b].end - blocks[b].start + 1)
+        masked_blocks.discard(largest)
+        visible_blocks.add(largest)
+        
     return visible_ops, masked_ops

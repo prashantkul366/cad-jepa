@@ -16,6 +16,7 @@ from model.layers.positional_encoding import PositionalEncodingLUT
 from model.model_utils import (
     _make_seq_first, _make_batch_first, _get_key_padding_mask
 )
+from rotary_embedding_torch import RotaryEmbedding
 
 
 class CADEmbedding(nn.Module):
@@ -26,13 +27,20 @@ class CADEmbedding(nn.Module):
         args_dim = cfg.args_dim + 1          # 257: PAD(-1) → index 0
         self.arg_embed  = nn.Embedding(args_dim, 64, padding_idx=0)
         self.embed_fcn  = nn.Linear(64 * cfg.n_args, cfg.d_model)
-        self.pos_encoding = PositionalEncodingLUT(cfg.d_model, max_len=seq_len + 2)
+        # self.pos_encoding = PositionalEncodingLUT(cfg.d_model, max_len=seq_len + 2)
+        self.rotary_emb = RotaryEmbedding(dim=cfg.d_model // cfg.n_heads)
+
+        # Pass rotary_emb into every attention layer
+        # for layer in self.encoder.layers:
+        #     layer.self_attn.rotary_emb = self.rotary_emb
+
 
     def forward(self, commands, args):
         S, N = commands.shape
         src = self.command_embed(commands.long()) + \
               self.embed_fcn(self.arg_embed((args + 1).long()).view(S, N, -1))
-        return self.pos_encoding(src)        # [S, N, d_model]
+        # return self.pos_encoding(src)        # [S, N, d_model]
+        return src
 
 
 class CADJEPAEncoder(nn.Module):
@@ -46,6 +54,9 @@ class CADJEPAEncoder(nn.Module):
         encoder_layer  = TransformerEncoderLayerImproved(
             cfg.d_model, cfg.n_heads, cfg.dim_feedforward, cfg.dropout)
         self.encoder   = TransformerEncoder(encoder_layer, cfg.n_layers, LayerNorm(cfg.d_model))
+        self.rotary_emb = self.embedding.rotary_emb   # reuse the one created in embedding
+        for layer in self.encoder.layers:
+            layer.self_attn.rotary_emb = self.rotary_emb
         self.output_norm = nn.LayerNorm(cfg.d_model)  
 
     def forward(self, commands, args, jepa_mask=None):

@@ -6,9 +6,11 @@ Attribute names aligned with DeepCAD convention so CADEmbedding/Encoder work dir
 class ConfigJEPA:
     # ── Encoder (names match DeepCAD's CADEmbedding + Encoder) ────────────
     n_commands      = 6       # LINE ARC CIRCLE EOS SOL EXT
-    d_model         = 256     # start with 256 (same as DeepCAD AE); scale to 768 later
+    # d_model         = 256     # start with 256 (same as DeepCAD AE); scale to 768 later
+    d_model         = 512     # start with 256 (same as DeepCAD AE); scale to 768 later
     n_heads         = 8
-    dim_feedforward = 1024    # 4 × d_model
+    # dim_feedforward = 1024    # 4 × d_model
+    dim_feedforward = 2048    # 4 × d_model
     dropout         = 0.1
     n_layers        = 12      # context encoder depth
     args_dim        = 256     # ARGS_DIM from macro.py
@@ -18,8 +20,10 @@ class ConfigJEPA:
     max_n_curves    = 6       # N_C  – max curves per loop
 
     # ── Predictor ──────────────────────────────────────────────────────────
-    predictor_d       = 128   # narrow: half of d_model
+    # predictor_d       = 128   # narrow: half of d_model
+    predictor_d       = 256   # narrow: half of d_model
     predictor_layers  = 3
+    predictor_heads : 8
 
     # ── EMA ────────────────────────────────────────────────────────────────
     ema_tau           = 0.996

@@ -8,6 +8,7 @@ BaseTrainer checkpoint logic: simplified from trainer/base.py
 import os
 import torch
 import torch.nn as nn
+import math
 import torch.nn.functional as F
 
 from model.ema import EMATargetEncoder
@@ -112,7 +113,9 @@ class TrainerJEPA:
         total, n_steps = 0.0, 0
         for commands, args, ctx_mask, tgt_mask in self.loader:
             self.optimizer.zero_grad()
-            loss = self.train_step(commands, args, ctx_mask, tgt_mask)
+            # loss = self.train_step(commands, args, ctx_mask, tgt_mask)
+            with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+                loss = self.train_step(commands, args, ctx_mask, tgt_mask)
             loss.backward()
             nn.utils.clip_grad_norm_(
                 list(self.enc.parameters()) + list(self.pred.parameters()),
@@ -129,7 +132,9 @@ class TrainerJEPA:
         if epoch >= self.cfg.ema_tau_warmup:
             return self.cfg.ema_tau
         p = epoch / self.cfg.ema_tau_warmup
-        return self.cfg.ema_tau_start + p * (self.cfg.ema_tau - self.cfg.ema_tau_start)
+        # return self.cfg.ema_tau_start + p * (self.cfg.ema_tau - self.cfg.ema_tau_start)
+        return self.cfg.ema_tau_start + (self.cfg.ema_tau - self.cfg.ema_tau_start) * (1 - math.cos(math.pi * p)) / 2
+
 
     def save_checkpoint(self, epoch):
         os.makedirs(self.cfg.ckpt_dir, exist_ok=True)
