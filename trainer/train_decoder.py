@@ -39,6 +39,7 @@ from torch.utils.data import DataLoader, Dataset
 from dataset.cad_dataset import CADDataset
 from model.decoder import CADSequenceDecoder, decoder_loss
 from utils.schedulers import WarmupCosineSchedule
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -201,11 +202,21 @@ class DecoderTrainer:
         # ── Scheduler: warmup then cosine decay ───────────────────────────────
         total_steps  = cfg.epochs * len(self.train_loader)
         warmup_steps = cfg.warmup_epochs * len(self.train_loader)
-        self.scheduler = WarmupCosineSchedule(
-            self.optimizer,
-            warmup_steps = warmup_steps,
-            t_total      = total_steps,
-        )
+        # self.scheduler = WarmupCosineSchedule(
+        #     self.optimizer,
+        #     warmup_steps = warmup_steps,
+        #     t_total      = total_steps,
+        # )
+
+        
+        _warmup = LinearLR(self.optimizer, start_factor=0.1,
+                        total_iters=warmup_steps)
+        _cosine = CosineAnnealingLR(self.optimizer,
+                                    T_max=total_steps - warmup_steps,
+                                    eta_min=1e-6)
+        self.scheduler = SequentialLR(self.optimizer,
+                                    schedulers=[_warmup, _cosine],
+                                    milestones=[warmup_steps])
 
         # ── State ─────────────────────────────────────────────────────────────
         self.best_cmd_acc  = 0.0

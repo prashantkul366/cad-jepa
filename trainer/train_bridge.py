@@ -51,6 +51,7 @@ from dataset.text_latent_dataset import (
 )
 from model.text_bridge import TextToLatentBridge, bridge_loss
 from utils.schedulers import WarmupCosineSchedule
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -150,11 +151,20 @@ class BridgeTrainer:
         # ── Scheduler: warmup then cosine decay ───────────────────────────────
         total_steps   = cfg.epochs * len(self.train_loader)
         warmup_steps  = cfg.warmup_epochs * len(self.train_loader)
-        self.scheduler = WarmupCosineSchedule(
-            self.optimizer,
-            warmup_steps = warmup_steps,
-            t_total      = total_steps,
-        )
+        # self.scheduler = WarmupCosineSchedule(
+        #     self.optimizer,
+        #     warmup_steps = warmup_steps,
+        #     t_total      = total_steps,
+        # )
+        
+        _warmup = LinearLR(self.optimizer, start_factor=0.1,
+                        total_iters=warmup_steps)
+        _cosine = CosineAnnealingLR(self.optimizer,
+                                    T_max=total_steps - warmup_steps,
+                                    eta_min=1e-6)
+        self.scheduler = SequentialLR(self.optimizer,
+                                    schedulers=[_warmup, _cosine],
+                                    milestones=[warmup_steps])
 
         # ── State ─────────────────────────────────────────────────────────────
         self.best_cos_sim    = 0.0
