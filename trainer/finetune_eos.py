@@ -31,7 +31,8 @@ ckpt = torch.load(
     map_location='cuda'
 )
 # trainer.model.load_state_dict(ckpt['model'])
-trainer.model.load_state_dict(ckpt['decoder'])
+# trainer.model.load_state_dict(ckpt['decoder'])
+trainer.decoder.load_state_dict(ckpt['decoder'])
 print(f"Loaded decoder from epoch {ckpt['epoch']}  "
       f"(val_cmd_acc={ckpt.get('val_cmd_acc', '?'):.4f})")
 print("Starting EOS fine-tuning...")
