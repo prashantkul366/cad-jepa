@@ -55,20 +55,33 @@ _GRAMMAR_ALLOWED = {
 #             mask[idx] = 0.0
 #         return logits + mask
 
-def _apply_grammar_mask(
-        logits          : torch.Tensor,
-        state           : str,
-        n_curves_in_loop: int   = 0,
-        max_curves      : int   = 4,
-        neg_inf         : float = -1e9,
-    ) -> torch.Tensor:
-        allowed = _GRAMMAR_ALLOWED.get(state, set(range(6)))
-        if state == 'in_loop_active' and n_curves_in_loop >= max_curves:
-            allowed = {5}   # force EXT after 4 curves
-        mask = torch.full_like(logits, neg_inf)
-        for idx in allowed:
-            mask[idx] = 0.0
-        return logits + mask
+# def _apply_grammar_mask(
+#         logits          : torch.Tensor,
+#         state           : str,
+#         n_curves_in_loop: int   = 0,
+#         max_curves      : int   = 4,
+#         neg_inf         : float = -1e9,
+#     ) -> torch.Tensor:
+#         allowed = _GRAMMAR_ALLOWED.get(state, set(range(6)))
+#         if state == 'in_loop_active' and n_curves_in_loop >= max_curves:
+#             allowed = {5}   # force EXT after 4 curves
+#         mask = torch.full_like(logits, neg_inf)
+#         for idx in allowed:
+#             mask[idx] = 0.0
+#         return logits + mask
+
+def _apply_grammar_mask(logits, state, n_curves_in_loop=0,
+                        n_curves_in_feature=0, max_curves=4, neg_inf=-1e9):
+    allowed = _GRAMMAR_ALLOWED.get(state, set(range(6)))
+    # Force EXT after 4 total curves in this feature (resets at EXT, not SOL)
+    if state == 'in_loop_active' and n_curves_in_feature >= max_curves:
+        allowed = {5}
+    mask = torch.full_like(logits, neg_inf)
+    for idx in allowed:
+        mask[idx] = 0.0
+    return logits + mask
+
+
 # def _grammar_transition(cmd: int, state: str, n_ext: int, max_ext: int = 10) -> tuple:
 #         """Returns (next_state, new_n_ext) after predicting cmd."""
 
@@ -85,21 +98,41 @@ def _apply_grammar_mask(
 #         return state, n_ext   # fallback (shouldn't happen with masking)
 
 # Replace _grammar_transition — add target_n_ext parameter
+
+
+# def _grammar_transition(cmd, state, n_ext, n_curves_in_loop=0,
+#                          max_ext=10, target_n_ext=None):
+#     if cmd == 4:   # SOL
+#         return 'in_loop_empty', n_ext, 0
+#     elif cmd in _CURVE_SET:
+#         return 'in_loop_active', n_ext, n_curves_in_loop + 1
+#     elif cmd == 5:  # EXT
+#         n_ext += 1
+#         # If we've hit the predicted count, force termination
+#         if target_n_ext is not None and n_ext >= target_n_ext:
+#             return 'done', n_ext, 0
+#         return ('done' if n_ext >= max_ext else 'after_ext'), n_ext, 0
+#     elif cmd == 3:  # EOS
+#         return 'done', n_ext, 0
+#     return state, n_ext, n_curves_in_loop
+
+
 def _grammar_transition(cmd, state, n_ext, n_curves_in_loop=0,
-                         max_ext=10, target_n_ext=None):
-    if cmd == 4:   # SOL
-        return 'in_loop_empty', n_ext, 0
+                        n_curves_in_feature=0, max_ext=10, target_n_ext=None):
+    if cmd == 4:   # SOL — loop resets, feature curve count persists
+        return 'in_loop_empty', n_ext, 0, n_curves_in_feature
     elif cmd in _CURVE_SET:
-        return 'in_loop_active', n_ext, n_curves_in_loop + 1
-    elif cmd == 5:  # EXT
+        return 'in_loop_active', n_ext, n_curves_in_loop+1, n_curves_in_feature+1
+    elif cmd == 5:  # EXT — both counters reset
         n_ext += 1
-        # If we've hit the predicted count, force termination
         if target_n_ext is not None and n_ext >= target_n_ext:
-            return 'done', n_ext, 0
-        return ('done' if n_ext >= max_ext else 'after_ext'), n_ext, 0
+            return 'done', n_ext, 0, 0
+        return ('done' if n_ext >= max_ext else 'after_ext'), n_ext, 0, 0
     elif cmd == 3:  # EOS
-        return 'done', n_ext, 0
-    return state, n_ext, n_curves_in_loop
+        return 'done', n_ext, 0, 0
+    return state, n_ext, n_curves_in_loop, n_curves_in_feature
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # CADSequenceDecoder
 # ──────────────────────────────────────────────────────────────────────────────
@@ -349,14 +382,25 @@ class CADSequenceDecoder(nn.Module):
         #     'n_ext' : 0,
         # }]
 
+        # beams = [{
+        #     'lp'             : 0.0,
+        #     'cmds'           : [],
+        #     'args'           : [],
+        #     'done'           : False,
+        #     'state'          : 'need_sol',
+        #     'n_ext'          : 0,
+        #     'n_curves_in_loop': 0,        # ← add this
+        # }]
+
         beams = [{
-            'lp'             : 0.0,
-            'cmds'           : [],
-            'args'           : [],
-            'done'           : False,
-            'state'          : 'need_sol',
-            'n_ext'          : 0,
-            'n_curves_in_loop': 0,        # ← add this
+            'lp'                 : 0.0,
+            'cmds'               : [],
+            'args'               : [],
+            'done'               : False,
+            'state'              : 'need_sol',
+            'n_ext'              : 0,
+            'n_curves_in_loop'   : 0,
+            'n_curves_in_feature': 0,      # ← new
         }]
 
         for step in range(max_len):
@@ -416,41 +460,68 @@ class CADSequenceDecoder(nn.Module):
             #             'done': done,
             #         })
 
-            for i, beam in enumerate(active):
-                # masked = _apply_grammar_mask(cmd_logits[i], beam['state'])
-                masked = _apply_grammar_mask(cmd_logits[i], beam['state'], beam['n_curves_in_loop'])
-                log_probs           = F.log_softmax(masked / temperature, dim=-1)
-                top_lps, top_cmds   = torch.topk(log_probs, min(beam_k, self.n_commands))
-                arg_pred            = args_logits[i].argmax(dim=-1) - 1   # [n_args]
+            # for i, beam in enumerate(active):
+            #     # masked = _apply_grammar_mask(cmd_logits[i], beam['state'])
+            #     masked = _apply_grammar_mask(cmd_logits[i], beam['state'], beam['n_curves_in_loop'])
+            #     log_probs           = F.log_softmax(masked / temperature, dim=-1)
+            #     top_lps, top_cmds   = torch.topk(log_probs, min(beam_k, self.n_commands))
+            #     arg_pred            = args_logits[i].argmax(dim=-1) - 1   # [n_args]
 
-                # for lp, cmd in zip(top_lps.tolist(), top_cmds.tolist()):
-                #     next_state, next_n_ext = _grammar_transition(
-                #         cmd, beam['state'], beam['n_ext']
-                #     )
-                #     done = (next_state == 'done') or (step == max_len - 1)
-                #     candidates.append({
-                #         'lp'    : beam['lp'] + lp,
-                #         'cmds'  : beam['cmds'] + [cmd],
-                #         'args'  : beam['args'] + [arg_pred.tolist()],
-                #         'done'  : done,
-                #         'state' : next_state,
-                #         'n_ext' : next_n_ext,
-                #     })
+            #     # for lp, cmd in zip(top_lps.tolist(), top_cmds.tolist()):
+            #     #     next_state, next_n_ext = _grammar_transition(
+            #     #         cmd, beam['state'], beam['n_ext']
+            #     #     )
+            #     #     done = (next_state == 'done') or (step == max_len - 1)
+            #     #     candidates.append({
+            #     #         'lp'    : beam['lp'] + lp,
+            #     #         'cmds'  : beam['cmds'] + [cmd],
+            #     #         'args'  : beam['args'] + [arg_pred.tolist()],
+            #     #         'done'  : done,
+            #     #         'state' : next_state,
+            #     #         'n_ext' : next_n_ext,
+            #     #     })
+
+            #     for lp, cmd in zip(top_lps.tolist(), top_cmds.tolist()):
+            #         next_state, next_n_ext, next_n_curves = _grammar_transition(
+            #             cmd, beam['state'], beam['n_ext'], beam['n_curves_in_loop'],
+            #             target_n_ext=target_n_ext
+            #         )
+            #         done = (next_state == 'done') or (step == max_len - 1)
+            #         candidates.append({
+            #             'lp'             : beam['lp'] + lp,
+            #             'cmds'           : beam['cmds'] + [cmd],
+            #             'args'           : beam['args'] + [arg_pred.tolist()],
+            #             'done'           : done,
+            #             'state'          : next_state,
+            #             'n_ext'          : next_n_ext,
+            #             'n_curves_in_loop': next_n_curves,
+            #         })
+
+            for i, beam in enumerate(active):
+                masked = _apply_grammar_mask(
+                    cmd_logits[i], beam['state'],
+                    beam['n_curves_in_loop'], beam['n_curves_in_feature']
+                )
+                log_probs         = F.log_softmax(masked / temperature, dim=-1)
+                top_lps, top_cmds = torch.topk(log_probs, min(beam_k, self.n_commands))
+                arg_pred          = args_logits[i].argmax(dim=-1) - 1
 
                 for lp, cmd in zip(top_lps.tolist(), top_cmds.tolist()):
-                    next_state, next_n_ext, next_n_curves = _grammar_transition(
-                        cmd, beam['state'], beam['n_ext'], beam['n_curves_in_loop'],
+                    ns, ne, ncl, ncf = _grammar_transition(
+                        cmd, beam['state'], beam['n_ext'],
+                        beam['n_curves_in_loop'], beam['n_curves_in_feature'],
                         target_n_ext=target_n_ext
                     )
-                    done = (next_state == 'done') or (step == max_len - 1)
+                    done = (ns == 'done') or (step == max_len - 1)
                     candidates.append({
-                        'lp'             : beam['lp'] + lp,
-                        'cmds'           : beam['cmds'] + [cmd],
-                        'args'           : beam['args'] + [arg_pred.tolist()],
-                        'done'           : done,
-                        'state'          : next_state,
-                        'n_ext'          : next_n_ext,
-                        'n_curves_in_loop': next_n_curves,
+                        'lp'                 : beam['lp'] + lp,
+                        'cmds'               : beam['cmds'] + [cmd],
+                        'args'               : beam['args'] + [arg_pred.tolist()],
+                        'done'               : done,
+                        'state'              : ns,
+                        'n_ext'              : ne,
+                        'n_curves_in_loop'   : ncl,
+                        'n_curves_in_feature': ncf,
                     })
 
 
