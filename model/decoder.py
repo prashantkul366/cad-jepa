@@ -46,30 +46,60 @@ _GRAMMAR_ALLOWED = {
     'done'          : {3},                 # only EOS
 }
 
-def _apply_grammar_mask(logits  : torch.Tensor, state   : str, neg_inf : float = -1e9,) -> torch.Tensor:
-        """Zero-out logits for commands not permitted by the current grammar state."""
+# def _apply_grammar_mask(logits  : torch.Tensor, state   : str, neg_inf : float = -1e9,) -> torch.Tensor:
+#         """Zero-out logits for commands not permitted by the current grammar state."""
 
+#         allowed = _GRAMMAR_ALLOWED.get(state, set(range(6)))
+#         mask    = torch.full_like(logits, neg_inf)
+#         for idx in allowed:
+#             mask[idx] = 0.0
+#         return logits + mask
+
+def _apply_grammar_mask(
+        logits          : torch.Tensor,
+        state           : str,
+        n_curves_in_loop: int   = 0,
+        max_curves      : int   = 4,
+        neg_inf         : float = -1e9,
+    ) -> torch.Tensor:
         allowed = _GRAMMAR_ALLOWED.get(state, set(range(6)))
-        mask    = torch.full_like(logits, neg_inf)
+        if state == 'in_loop_active' and n_curves_in_loop >= max_curves:
+            allowed = {5}   # force EXT after 4 curves
+        mask = torch.full_like(logits, neg_inf)
         for idx in allowed:
             mask[idx] = 0.0
         return logits + mask
+# def _grammar_transition(cmd: int, state: str, n_ext: int, max_ext: int = 10) -> tuple:
+#         """Returns (next_state, new_n_ext) after predicting cmd."""
 
-def _grammar_transition(cmd: int, state: str, n_ext: int, max_ext: int = 10) -> tuple:
-        """Returns (next_state, new_n_ext) after predicting cmd."""
 
+#         if cmd == 4:   # SOL
+#             return 'in_loop_empty', n_ext
+#         elif cmd in _CURVE_SET:
+#             return 'in_loop_active', n_ext
+#         elif cmd == 5:  # EXT
+#             n_ext += 1
+#             return ('done' if n_ext >= max_ext else 'after_ext'), n_ext
+#         elif cmd == 3:  # EOS
+#             return 'done', n_ext
+#         return state, n_ext   # fallback (shouldn't happen with masking)
 
-        if cmd == 4:   # SOL
-            return 'in_loop_empty', n_ext
-        elif cmd in _CURVE_SET:
-            return 'in_loop_active', n_ext
-        elif cmd == 5:  # EXT
-            n_ext += 1
-            return ('done' if n_ext >= max_ext else 'after_ext'), n_ext
-        elif cmd == 3:  # EOS
-            return 'done', n_ext
-        return state, n_ext   # fallback (shouldn't happen with masking)
-
+# Replace _grammar_transition — add target_n_ext parameter
+def _grammar_transition(cmd, state, n_ext, n_curves_in_loop=0,
+                         max_ext=10, target_n_ext=None):
+    if cmd == 4:   # SOL
+        return 'in_loop_empty', n_ext, 0
+    elif cmd in _CURVE_SET:
+        return 'in_loop_active', n_ext, n_curves_in_loop + 1
+    elif cmd == 5:  # EXT
+        n_ext += 1
+        # If we've hit the predicted count, force termination
+        if target_n_ext is not None and n_ext >= target_n_ext:
+            return 'done', n_ext, 0
+        return ('done' if n_ext >= max_ext else 'after_ext'), n_ext, 0
+    elif cmd == 3:  # EOS
+        return 'done', n_ext, 0
+    return state, n_ext, n_curves_in_loop
 # ──────────────────────────────────────────────────────────────────────────────
 # CADSequenceDecoder
 # ──────────────────────────────────────────────────────────────────────────────
@@ -261,6 +291,7 @@ class CADSequenceDecoder(nn.Module):
         temperature : float = 0.8,
         len_penalty : float = 0.6,    # length normalization exponent (0 = no norm)
         return_all  : bool  = False,  # if True, return all beam_k beams
+        n_ext_head=None,                # if not None, use n_ext_head to predict target_n_ext for grammar masking
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Beam search over command types; greedy decoding for args.
@@ -298,19 +329,34 @@ class CADSequenceDecoder(nn.Module):
         device = z_star.device
         EOS    = self.eos_idx
 
+        target_n_ext = None
+        if n_ext_head is not None:
+            with torch.no_grad():
+                target_n_ext = max(1, round(n_ext_head(z_star).item()))
+
         # Precompute memory (shared across all beams)
         memory = self.z_proj(z_star).unsqueeze(1)   # [1, 1, d_model]
 
         # ── Beam state ────────────────────────────────────────────────────────
         # Each beam: dict with cumulative log-prob, predicted cmd/arg lists, done flag
         # beams = [{'lp': 0.0, 'cmds': [], 'args': [], 'done': False}]
+        # beams = [{
+        #     'lp'    : 0.0,
+        #     'cmds'  : [],
+        #     'args'  : [],
+        #     'done'  : False,
+        #     'state' : 'need_sol',   # grammar state
+        #     'n_ext' : 0,
+        # }]
+
         beams = [{
-            'lp'    : 0.0,
-            'cmds'  : [],
-            'args'  : [],
-            'done'  : False,
-            'state' : 'need_sol',   # grammar state
-            'n_ext' : 0,
+            'lp'             : 0.0,
+            'cmds'           : [],
+            'args'           : [],
+            'done'           : False,
+            'state'          : 'need_sol',
+            'n_ext'          : 0,
+            'n_curves_in_loop': 0,        # ← add this
         }]
 
         for step in range(max_len):
@@ -371,23 +417,40 @@ class CADSequenceDecoder(nn.Module):
             #         })
 
             for i, beam in enumerate(active):
-                masked = _apply_grammar_mask(cmd_logits[i], beam['state'])
+                # masked = _apply_grammar_mask(cmd_logits[i], beam['state'])
+                masked = _apply_grammar_mask(cmd_logits[i], beam['state'], beam['n_curves_in_loop'])
                 log_probs           = F.log_softmax(masked / temperature, dim=-1)
                 top_lps, top_cmds   = torch.topk(log_probs, min(beam_k, self.n_commands))
                 arg_pred            = args_logits[i].argmax(dim=-1) - 1   # [n_args]
 
+                # for lp, cmd in zip(top_lps.tolist(), top_cmds.tolist()):
+                #     next_state, next_n_ext = _grammar_transition(
+                #         cmd, beam['state'], beam['n_ext']
+                #     )
+                #     done = (next_state == 'done') or (step == max_len - 1)
+                #     candidates.append({
+                #         'lp'    : beam['lp'] + lp,
+                #         'cmds'  : beam['cmds'] + [cmd],
+                #         'args'  : beam['args'] + [arg_pred.tolist()],
+                #         'done'  : done,
+                #         'state' : next_state,
+                #         'n_ext' : next_n_ext,
+                #     })
+
                 for lp, cmd in zip(top_lps.tolist(), top_cmds.tolist()):
-                    next_state, next_n_ext = _grammar_transition(
-                        cmd, beam['state'], beam['n_ext']
+                    next_state, next_n_ext, next_n_curves = _grammar_transition(
+                        cmd, beam['state'], beam['n_ext'], beam['n_curves_in_loop'],
+                        target_n_ext=target_n_ext
                     )
                     done = (next_state == 'done') or (step == max_len - 1)
                     candidates.append({
-                        'lp'    : beam['lp'] + lp,
-                        'cmds'  : beam['cmds'] + [cmd],
-                        'args'  : beam['args'] + [arg_pred.tolist()],
-                        'done'  : done,
-                        'state' : next_state,
-                        'n_ext' : next_n_ext,
+                        'lp'             : beam['lp'] + lp,
+                        'cmds'           : beam['cmds'] + [cmd],
+                        'args'           : beam['args'] + [arg_pred.tolist()],
+                        'done'           : done,
+                        'state'          : next_state,
+                        'n_ext'          : next_n_ext,
+                        'n_curves_in_loop': next_n_curves,
                     })
 
 
