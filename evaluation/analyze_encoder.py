@@ -264,54 +264,109 @@ class EncoderAnalyzer:
     # Module 2 — Effective Rank
     # ─────────────────────────────────────────────────────────────────────────
 
-    def module_effective_rank(self, latents: torch.Tensor) -> dict:
+    # def module_effective_rank(self, latents: torch.Tensor) -> dict:
+    #     """
+    #     Measure effective dimensionality of the representation space.
+
+    #     rank_frac = R_eff / d_model  (Roy & Vetterli 2007 spectral entropy formula)
+
+    #     Training log showed 0.70–0.75 throughout.
+    #     rank_frac < 0.50 indicates representation collapse.
+
+    #     Also computes participation ratio (Gao et al. 2017) and the percentage of
+    #     variance explained by the top-5 singular values — a high top-5 percentage
+    #     indicates a low-rank or collapsed representation.
+    #     """
+    #     z = (latents - latents.mean(0)).float()     # centre
+    #     _, S, _ = torch.linalg.svd(z, full_matrices=False)
+
+    #     s  = S ** 2
+    #     p  = s / s.sum()
+    #     H  = -(p * torch.log(p + 1e-10)).sum()
+    #     R_eff     = H.exp().item()
+    #     rank_frac = R_eff / latents.size(1)
+
+    #     # Participation ratio (alternative collapse measure)
+    #     pr_frac   = ((s.sum() ** 2) / (s ** 2).sum()).item() / latents.size(1)
+
+    #     # Concentration in top-5 singular values
+    #     top5_pct  = (s[:5].sum() / s.sum()).item() * 100
+
+    #     r = {
+    #         'effective_rank' : round(R_eff, 2),
+    #         'rank_frac'      : round(rank_frac, 4),
+    #         'pr_frac'        : round(pr_frac, 4),
+    #         'top5_pct'       : round(top5_pct, 2),
+    #         'd_model'        : latents.size(1),
+    #     }
+
+    #     status = 'HEALTHY ✓' if rank_frac >= 0.70 else ('MARGINAL' if rank_frac >= 0.50 else 'COLLAPSED ✗')
+    #     in_range = '✓ matches' if 0.68 < rank_frac < 0.78 else '✗ differs'
+
+    #     print("\n── Module 2  Effective Rank ──────────────────────────────────")
+    #     print(f"  Effective rank   : {R_eff:.1f} / {latents.size(1)}"
+    #           f"  →  rank_frac = {rank_frac:.4f}  [{status}]")
+    #     print(f"  Participation r  : {pr_frac:.4f}")
+    #     print(f"  Top-5 sv pct     : {top5_pct:.1f}%  "
+    #           f"(low = good, collapse shows as >50%)")
+    #     print(f"  Training log was : 0.70 – 0.75  →  {in_range}")
+    #     return r
+
+    def module_effective_rank(self, commands: torch.Tensor,
+                          args: torch.Tensor,
+                          n: int = 500) -> dict:
         """
-        Measure effective dimensionality of the representation space.
-
-        rank_frac = R_eff / d_model  (Roy & Vetterli 2007 spectral entropy formula)
-
-        Training log showed 0.70–0.75 throughout.
-        rank_frac < 0.50 indicates representation collapse.
-
-        Also computes participation ratio (Gao et al. 2017) and the percentage of
-        variance explained by the top-5 singular values — a high top-5 percentage
-        indicates a low-rank or collapsed representation.
+        Compute effective rank on PER-TOKEN representations to match
+        the training collapse monitor (which also uses per-token reps).
+        Mean-pooled representations always show artificially low rank
+        due to within-sequence correlation being averaged out.
         """
-        z = (latents - latents.mean(0)).float()     # centre
+        all_h = []
+        for i in range(0, n, 128):
+            c = commands[i:i+128]
+            a = args[i:i+128]
+            with torch.no_grad():
+                h = self.enc(c, a, jepa_mask=None)         # [B, 60, 512]
+            valid = (c != EOS_IDX)                          # [B, 60]
+            for b in range(c.size(0)):
+                vpos = valid[b].nonzero(as_tuple=True)[0]
+                all_h.append(h[b, vpos].cpu())
+
+        tokens = torch.cat(all_h).float()                  # [T_total, 512]
+        print(f"  Token reps collected: {tokens.size(0):,} from {n} sequences")
+
+        z = (tokens - tokens.mean(0))
         _, S, _ = torch.linalg.svd(z, full_matrices=False)
 
         s  = S ** 2
         p  = s / s.sum()
         H  = -(p * torch.log(p + 1e-10)).sum()
         R_eff     = H.exp().item()
-        rank_frac = R_eff / latents.size(1)
+        rank_frac = R_eff / tokens.size(1)
 
-        # Participation ratio (alternative collapse measure)
-        pr_frac   = ((s.sum() ** 2) / (s ** 2).sum()).item() / latents.size(1)
-
-        # Concentration in top-5 singular values
-        top5_pct  = (s[:5].sum() / s.sum()).item() * 100
+        pr_frac  = ((s.sum() ** 2) / (s ** 2).sum()).item() / tokens.size(1)
+        top5_pct = (s[:5].sum() / s.sum()).item() * 100
 
         r = {
-            'effective_rank' : round(R_eff, 2),
-            'rank_frac'      : round(rank_frac, 4),
-            'pr_frac'        : round(pr_frac, 4),
-            'top5_pct'       : round(top5_pct, 2),
-            'd_model'        : latents.size(1),
+            'effective_rank': round(R_eff, 2),
+            'rank_frac'     : round(rank_frac, 4),
+            'pr_frac'       : round(pr_frac, 4),
+            'top5_pct'      : round(top5_pct, 2),
+            'n_tokens'      : tokens.size(0),
+            'd_model'       : tokens.size(1),
         }
 
-        status = 'HEALTHY ✓' if rank_frac >= 0.70 else ('MARGINAL' if rank_frac >= 0.50 else 'COLLAPSED ✗')
+        status = 'HEALTHY ✓' if rank_frac >= 0.70 else 'COLLAPSED ✗'
         in_range = '✓ matches' if 0.68 < rank_frac < 0.78 else '✗ differs'
 
-        print("\n── Module 2  Effective Rank ──────────────────────────────────")
-        print(f"  Effective rank   : {R_eff:.1f} / {latents.size(1)}"
-              f"  →  rank_frac = {rank_frac:.4f}  [{status}]")
+        print("\n── Module 2  Effective Rank (per-token) ──────────────────────")
+        print(f"  Token reps       : {tokens.size(0):,}  ({n} sequences × avg_seq_len)")
+        print(f"  Effective rank   : {R_eff:.1f} / {tokens.size(1)}"
+            f"  →  rank_frac = {rank_frac:.4f}  [{status}]")
         print(f"  Participation r  : {pr_frac:.4f}")
-        print(f"  Top-5 sv pct     : {top5_pct:.1f}%  "
-              f"(low = good, collapse shows as >50%)")
+        print(f"  Top-5 sv pct     : {top5_pct:.1f}%")
         print(f"  Training log was : 0.70 – 0.75  →  {in_range}")
         return r
-
     # ─────────────────────────────────────────────────────────────────────────
     # Module 3 — Masked Consistency
     # ─────────────────────────────────────────────────────────────────────────
@@ -670,7 +725,8 @@ class EncoderAnalyzer:
         results = {'epoch': self.epoch, 'n_samples': N}
 
         results['latent_stats']        = self.module_latent_stats(latents)
-        results['effective_rank']      = self.module_effective_rank(latents)
+        # results['effective_rank']      = self.module_effective_rank(latents)
+        results['effective_rank'] = self.module_effective_rank(commands, args, n=min(500, N))
         results['masked_consistency']  = self.module_masked_consistency(
             commands, args, n=min(500, N))
         results['token_separation']    = self.module_token_separation(
