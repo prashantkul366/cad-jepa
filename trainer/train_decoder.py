@@ -402,6 +402,20 @@ class DecoderTrainer:
             'cfg'          : self.cfg.__dict__,
         }, self._ckpt_path(f"epoch_{epoch:04d}"))
 
+    # def save_best(self, epoch: int, val_metrics: dict) -> None:
+    #     torch.save({
+    #         'epoch'        : epoch,
+    #         'val_cmd_acc'  : val_metrics['val_cmd_acc'],
+    #         'val_args_acc' : val_metrics['val_args_acc'],
+    #         'val_loss'     : val_metrics['val_loss'],
+    #         'decoder'      : self.decoder.state_dict(),
+    #         'cfg'          : self.cfg.__dict__,
+    #     }, self._ckpt_path("best"))
+    #     print(f"  ✓ New best saved  "
+    #           f"(cmd_acc={val_metrics['val_cmd_acc']:.4f}  "
+    #           f"args_acc={val_metrics['val_args_acc']:.4f}  "
+    #           f"epoch={epoch})")
+
     def save_best(self, epoch: int, val_metrics: dict) -> None:
         torch.save({
             'epoch'        : epoch,
@@ -409,6 +423,8 @@ class DecoderTrainer:
             'val_args_acc' : val_metrics['val_args_acc'],
             'val_loss'     : val_metrics['val_loss'],
             'decoder'      : self.decoder.state_dict(),
+            'optimizer'    : self.optimizer.state_dict(),
+            'scheduler'    : self.scheduler.state_dict(),
             'cfg'          : self.cfg.__dict__,
         }, self._ckpt_path("best"))
         print(f"  ✓ New best saved  "

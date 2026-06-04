@@ -395,7 +395,8 @@ def decoder_loss(
     """
     Combined command + args cross-entropy loss.
 
-    Command loss : ignore EOS-padded positions (ignore_index=EOS_IDX)
+    # Command loss : ignore EOS-padded positions (ignore_index=EOS_IDX)
+    Command loss : all positions including EOS padding (aligned with DeepCAD/Text2CAD)
     Args loss    : ignore PAD args (ignore_index=0 after +1 shift)
 
     Returns:
@@ -444,22 +445,28 @@ def decoder_loss(
 
     # Exclude padding EOS (2nd+ in sequence). Apply 30x class weight on EOS
     # to overcome SOL prior (~88%). Makes EOS ~33% of total gradient signal.
-    is_eos   = (tgt_commands == eos_idx)
-    cum_eos  = is_eos.long().cumsum(dim=1)
-    cmd_mask = (cum_eos <= 1)                          # real tokens + first EOS
+    # is_eos   = (tgt_commands == eos_idx)
+    # cum_eos  = is_eos.long().cumsum(dim=1)
+    # cmd_mask = (cum_eos <= 1)                          # real tokens + first EOS
 
-    class_w           = torch.ones(cmd_logits.size(-1), device=cmd_logits.device)
-    class_w[eos_idx]  = 30.0                           # 30x class weight for EOS
+    # class_w           = torch.ones(cmd_logits.size(-1), device=cmd_logits.device)
+    # class_w[eos_idx]  = 30.0                           # 30x class weight for EOS
 
-    ce_all   = F.cross_entropy(
+    # ce_all   = F.cross_entropy(
+    #     cmd_logits.reshape(-1, cmd_logits.size(-1)),
+    #     tgt_commands.reshape(-1),
+    #     weight          = class_w,
+    #     reduction       = 'none',
+    #     label_smoothing = label_smooth,
+    # )                                                  # [B*L], EOS positions 30x
+    # denom    = cmd_mask.float().sum().clamp(min=1)
+    # cmd_loss = (ce_all * cmd_mask.reshape(-1).float()).sum() / denom
+
+    cmd_loss = F.cross_entropy(
         cmd_logits.reshape(-1, cmd_logits.size(-1)),
         tgt_commands.reshape(-1),
-        weight          = class_w,
-        reduction       = 'none',
         label_smoothing = label_smooth,
-    )                                                  # [B*L], EOS positions 30x
-    denom    = cmd_mask.float().sum().clamp(min=1)
-    cmd_loss = (ce_all * cmd_mask.reshape(-1).float()).sum() / denom
+    )
 
     # ── Args loss ─────────────────────────────────────────────────────────────
     # Shift args: -1 → 0 (PAD, ignored), 0-255 → 1-256
