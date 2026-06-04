@@ -411,9 +411,27 @@ def decoder_loss(
     #     ignore_index    = eos_idx,
     #     label_smoothing = label_smooth,
     # )
-    is_eos   = (tgt_commands == eos_idx)               # [B, L]
-    cum_eos  = is_eos.long().cumsum(dim=1)             # [B, L]
-    cmd_mask = (cum_eos <= 1)                          # [B, L] True = compute loss
+    # is_eos   = (tgt_commands == eos_idx)               # [B, L]
+    # cum_eos  = is_eos.long().cumsum(dim=1)             # [B, L]
+    # cmd_mask = (cum_eos <= 1)                          # [B, L] True = compute loss
+
+    # ce_all   = F.cross_entropy(
+    #     cmd_logits.reshape(-1, cmd_logits.size(-1)),
+    #     tgt_commands.reshape(-1),
+    #     reduction       = 'none',
+    #     label_smoothing = label_smooth,
+    # )                                                  # [B*L]
+    # denom    = cmd_mask.float().sum().clamp(min=1)
+    # cmd_loss = (ce_all * cmd_mask.reshape(-1).float()).sum() / denom
+
+    is_eos      = (tgt_commands == eos_idx)            # [B, L]
+    cum_eos     = is_eos.long().cumsum(dim=1)          # [B, L]
+    cmd_mask    = (cum_eos <= 1)                       # real tokens + first EOS
+    first_eos   = is_eos & (cum_eos == 1)             # exactly first EOS position
+
+    # Upweight first-EOS 5x: 1 EOS position vs ~14 real positions → balanced signal
+    pos_w    = torch.ones_like(tgt_commands, dtype=torch.float)
+    pos_w[first_eos] = 5.0
 
     ce_all   = F.cross_entropy(
         cmd_logits.reshape(-1, cmd_logits.size(-1)),
@@ -421,8 +439,8 @@ def decoder_loss(
         reduction       = 'none',
         label_smoothing = label_smooth,
     )                                                  # [B*L]
-    denom    = cmd_mask.float().sum().clamp(min=1)
-    cmd_loss = (ce_all * cmd_mask.reshape(-1).float()).sum() / denom
+    denom    = (cmd_mask.float() * pos_w).sum().clamp(min=1)
+    cmd_loss = (ce_all * cmd_mask.reshape(-1).float() * pos_w.reshape(-1)).sum() / denom
 
     # ── Args loss ─────────────────────────────────────────────────────────────
     # Shift args: -1 → 0 (PAD, ignored), 0-255 → 1-256
