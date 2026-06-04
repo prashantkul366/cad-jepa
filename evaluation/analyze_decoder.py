@@ -281,7 +281,13 @@ class DecoderAnalyzer:
         pred_feats = self._struct_features(pred_cmds)
 
         struct_rate = pred_feats['struct_valid'].mean().item()
+        # n_ext_match = (pred_feats['n_ext'] == gt_feats['n_ext']).float().mean().item()
+        # Align sizes — batch generation may overshoot n by up to (batch_size - 1)
+        n_actual   = min(len(pred_feats['n_ext']), len(gt_feats['n_ext']))
+        pred_feats = {k: v[:n_actual] for k, v in pred_feats.items()}
+        gt_feats   = {k: v[:n_actual] for k, v in gt_feats.items()}
         n_ext_match = (pred_feats['n_ext'] == gt_feats['n_ext']).float().mean().item()
+        
         n_ext_close = ((pred_feats['n_ext'] - gt_feats['n_ext']).abs() <= 1).float().mean().item()
         seq_len_err = (pred_feats['seq_len'] - gt_feats['seq_len']).abs().mean().item()
         eos_rate    = pred_feats['struct_valid'].mean().item()   # eos is in struct_valid
