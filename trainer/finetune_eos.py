@@ -30,7 +30,8 @@ ckpt = torch.load(
     '/content/drive/MyDrive/cad-jepa-checkpoints/decoder/best.pt',
     map_location='cuda'
 )
-trainer.model.load_state_dict(ckpt['model'])
+# trainer.model.load_state_dict(ckpt['model'])
+trainer.model.load_state_dict(ckpt['decoder'])
 print(f"Loaded decoder from epoch {ckpt['epoch']}  "
       f"(val_cmd_acc={ckpt.get('val_cmd_acc', '?'):.4f})")
 print("Starting EOS fine-tuning...")
