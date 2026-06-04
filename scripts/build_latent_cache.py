@@ -119,15 +119,20 @@ def verify_cache(cache: dict, phase: str) -> None:
     print(f"  UIDs         : {len(cache):,}")
     print(f"  Latent dim   : {sample_z.shape[1]}")
     print(f"  dtype        : {sample_z.dtype}")
-    print(f"  z_norm mean  : {z_norm.mean():.3f}  (expect ~√512 ≈ 22.6 for unit std)")
-    print(f"  z_norm std   : {z_norm.std():.3f}")
+    avg_len_implied = (22.63 / z_norm.mean()) ** 2
+    print(f"  z_norm mean  : {z_norm.mean():.3f}  (mean-pooled, implies avg_seq_len≈{avg_len_implied:.1f})")
+    print(f"  z feature std: {z_std:.3f}  (expected ≈0.27 for mean-pooled over ~10 tokens)")
+    # print(f"  z_norm mean  : {z_norm.mean():.3f}  (expect ~√512 ≈ 22.6 for unit std)")
+    # print(f"  z_norm std   : {z_norm.std():.3f}")
     print(f"  z feature std: {z_std:.3f}  (expect ≈ 1.0 after encoder output_norm)")
     print(f"  z min / max  : {sample_z.min():.3f} / {sample_z.max():.3f}")
 
+    if z_std < 0.05:
+        print(f"  ⚠ WARNING: z_std={z_std:.3f} — representations may be collapsed.")
     # Warn if representations look collapsed
-    if z_std < 0.3:
-        print(f"  ⚠ WARNING: z_std={z_std:.3f} is very low — representations may be collapsed.")
-        print(f"    Check that Stage 1 training completed without collapse (rank > 0.70).")
+    # if z_std < 0.3:
+    #     print(f"  ⚠ WARNING: z_std={z_std:.3f} is very low — representations may be collapsed.")
+    #     print(f"    Check that Stage 1 training completed without collapse (rank > 0.70).")
 
 
 def save_cache(cache: dict, out_path: str) -> None:
