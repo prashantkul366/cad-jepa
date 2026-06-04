@@ -17,7 +17,6 @@ from model.layers.improved_transformer import TransformerDecoderLayerImproved
 
 
 class CADPredictor(nn.Module):
-
     def __init__(self, cfg):
         super().__init__()
         d_ctx  = cfg.d_model        # 256
