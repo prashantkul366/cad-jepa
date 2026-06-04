@@ -405,12 +405,24 @@ def decoder_loss(
     B, L = tgt_commands.shape
 
     # ── Command loss ──────────────────────────────────────────────────────────
-    cmd_loss = F.cross_entropy(
+    # cmd_loss = F.cross_entropy(
+    #     cmd_logits.reshape(-1, cmd_logits.size(-1)),
+    #     tgt_commands.reshape(-1),
+    #     ignore_index    = eos_idx,
+    #     label_smoothing = label_smooth,
+    # )
+    is_eos   = (tgt_commands == eos_idx)               # [B, L]
+    cum_eos  = is_eos.long().cumsum(dim=1)             # [B, L]
+    cmd_mask = (cum_eos <= 1)                          # [B, L] True = compute loss
+
+    ce_all   = F.cross_entropy(
         cmd_logits.reshape(-1, cmd_logits.size(-1)),
         tgt_commands.reshape(-1),
-        ignore_index    = eos_idx,
+        reduction       = 'none',
         label_smoothing = label_smooth,
-    )
+    )                                                  # [B*L]
+    denom    = cmd_mask.float().sum().clamp(min=1)
+    cmd_loss = (ce_all * cmd_mask.reshape(-1).float()).sum() / denom
 
     # ── Args loss ─────────────────────────────────────────────────────────────
     # Shift args: -1 → 0 (PAD, ignored), 0-255 → 1-256
