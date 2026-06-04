@@ -287,7 +287,7 @@ class DecoderAnalyzer:
         pred_feats = {k: v[:n_actual] for k, v in pred_feats.items()}
         gt_feats   = {k: v[:n_actual] for k, v in gt_feats.items()}
         n_ext_match = (pred_feats['n_ext'] == gt_feats['n_ext']).float().mean().item()
-        
+
         n_ext_close = ((pred_feats['n_ext'] - gt_feats['n_ext']).abs() <= 1).float().mean().item()
         seq_len_err = (pred_feats['seq_len'] - gt_feats['seq_len']).abs().mean().item()
         eos_rate    = pred_feats['struct_valid'].mean().item()   # eos is in struct_valid
@@ -462,7 +462,8 @@ class DecoderAnalyzer:
         pred_from_gt = []
         for i in range(0, n, self.cfg.batch_size):
             pred_from_gt.append(self._generate_batch(self.z_gt[i:i+self.cfg.batch_size]).cpu())
-        pred_from_gt = torch.cat(pred_from_gt)
+        # pred_from_gt = torch.cat(pred_from_gt)
+        pred_from_gt = torch.cat(pred_from_gt)[:n]
 
         # 2. Decode from shuffled z (wrong z for each sample)
         perm         = torch.randperm(n)
@@ -470,14 +471,16 @@ class DecoderAnalyzer:
         pred_from_shuf = []
         for i in range(0, n, self.cfg.batch_size):
             pred_from_shuf.append(self._generate_batch(z_shuffled[i:i+self.cfg.batch_size]).cpu())
-        pred_from_shuf = torch.cat(pred_from_shuf)
+        # pred_from_shuf = torch.cat(pred_from_shuf)
+        pred_from_shuf = torch.cat(pred_from_shuf)[:n]
 
         # 3. Decode from random z
         z_random = torch.randn_like(self.z_gt[:n]) * self.z_gt[:n].std() + self.z_gt[:n].mean()
         pred_from_rand = []
         for i in range(0, n, self.cfg.batch_size):
             pred_from_rand.append(self._generate_batch(z_random[i:i+self.cfg.batch_size].to(self.device)).cpu())
-        pred_from_rand = torch.cat(pred_from_rand)
+        # pred_from_rand = torch.cat(pred_from_rand)
+        pred_from_rand = torch.cat(pred_from_rand)[:n]
 
         def _n_ext_match(pred, gt):
             p_ext = (pred == EXT_IDX).sum(1).float()

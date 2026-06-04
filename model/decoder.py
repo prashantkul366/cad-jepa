@@ -34,6 +34,42 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+# ── Add near top of model/decoder.py, after imports ──────────────────────────
+
+_CURVE_SET = {0, 1, 2}   # LINE, ARC, CIRCLE
+
+_GRAMMAR_ALLOWED = {
+    'need_sol'      : {4},                  # only SOL
+    'in_loop_empty' : {0, 1, 2},            # only curves (after SOL, no curve yet)
+    'in_loop_active': {0, 1, 2, 4, 5},     # curves, new SOL loop, or EXT
+    'after_ext'     : {3, 4},              # EOS or SOL (start new feature)
+    'done'          : {3},                 # only EOS
+}
+
+def _apply_grammar_mask(logits  : torch.Tensor, state   : str, neg_inf : float = -1e9,) -> torch.Tensor:
+        """Zero-out logits for commands not permitted by the current grammar state."""
+
+        allowed = _GRAMMAR_ALLOWED.get(state, set(range(6)))
+        mask    = torch.full_like(logits, neg_inf)
+        for idx in allowed:
+            mask[idx] = 0.0
+        return logits + mask
+
+def _grammar_transition(cmd: int, state: str, n_ext: int, max_ext: int = 10) -> tuple:
+        """Returns (next_state, new_n_ext) after predicting cmd."""
+
+
+        if cmd == 4:   # SOL
+            return 'in_loop_empty', n_ext
+        elif cmd in _CURVE_SET:
+            return 'in_loop_active', n_ext
+        elif cmd == 5:  # EXT
+            n_ext += 1
+            return ('done' if n_ext >= max_ext else 'after_ext'), n_ext
+        elif cmd == 3:  # EOS
+            return 'done', n_ext
+        return state, n_ext   # fallback (shouldn't happen with masking)
+
 # ──────────────────────────────────────────────────────────────────────────────
 # CADSequenceDecoder
 # ──────────────────────────────────────────────────────────────────────────────
@@ -267,7 +303,15 @@ class CADSequenceDecoder(nn.Module):
 
         # ── Beam state ────────────────────────────────────────────────────────
         # Each beam: dict with cumulative log-prob, predicted cmd/arg lists, done flag
-        beams = [{'lp': 0.0, 'cmds': [], 'args': [], 'done': False}]
+        # beams = [{'lp': 0.0, 'cmds': [], 'args': [], 'done': False}]
+        beams = [{
+            'lp'    : 0.0,
+            'cmds'  : [],
+            'args'  : [],
+            'done'  : False,
+            'state' : 'need_sol',   # grammar state
+            'n_ext' : 0,
+        }]
 
         for step in range(max_len):
             if all(b['done'] for b in beams):
@@ -310,21 +354,42 @@ class CADSequenceDecoder(nn.Module):
             # ── Expand each active beam by top-k commands ─────────────────────
             candidates = []
 
-            for i, beam in enumerate(active):
-                log_probs = F.log_softmax(cmd_logits[i] / temperature, dim=-1)
-                top_lps, top_cmds = torch.topk(log_probs, min(beam_k, self.n_commands))
+            # for i, beam in enumerate(active):
+            #     log_probs = F.log_softmax(cmd_logits[i] / temperature, dim=-1)
+            #     top_lps, top_cmds = torch.topk(log_probs, min(beam_k, self.n_commands))
 
-                # Greedy args: argmax per arg, shift back from embedding space
-                arg_pred = args_logits[i].argmax(dim=-1) - 1   # [n_args], -1=PAD, 0-255=values
+            #     # Greedy args: argmax per arg, shift back from embedding space
+            #     arg_pred = args_logits[i].argmax(dim=-1) - 1   # [n_args], -1=PAD, 0-255=values
+
+            #     for lp, cmd in zip(top_lps.tolist(), top_cmds.tolist()):
+            #         done = (cmd == EOS) or (step == max_len - 1)
+            #         candidates.append({
+            #             'lp'  : beam['lp'] + lp,
+            #             'cmds': beam['cmds'] + [cmd],
+            #             'args': beam['args'] + [arg_pred.tolist()],
+            #             'done': done,
+            #         })
+
+            for i, beam in enumerate(active):
+                masked = _apply_grammar_mask(cmd_logits[i], beam['state'])
+                log_probs           = F.log_softmax(masked / temperature, dim=-1)
+                top_lps, top_cmds   = torch.topk(log_probs, min(beam_k, self.n_commands))
+                arg_pred            = args_logits[i].argmax(dim=-1) - 1   # [n_args]
 
                 for lp, cmd in zip(top_lps.tolist(), top_cmds.tolist()):
-                    done = (cmd == EOS) or (step == max_len - 1)
+                    next_state, next_n_ext = _grammar_transition(
+                        cmd, beam['state'], beam['n_ext']
+                    )
+                    done = (next_state == 'done') or (step == max_len - 1)
                     candidates.append({
-                        'lp'  : beam['lp'] + lp,
-                        'cmds': beam['cmds'] + [cmd],
-                        'args': beam['args'] + [arg_pred.tolist()],
-                        'done': done,
+                        'lp'    : beam['lp'] + lp,
+                        'cmds'  : beam['cmds'] + [cmd],
+                        'args'  : beam['args'] + [arg_pred.tolist()],
+                        'done'  : done,
+                        'state' : next_state,
+                        'n_ext' : next_n_ext,
                     })
+
 
             # Merge with already-done beams and prune to top-k
             all_cands = candidates + frozen
