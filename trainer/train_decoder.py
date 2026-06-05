@@ -52,13 +52,15 @@ class ConfigDecoder:
     cache_train : str = '/content/drive/MyDrive/cad-jepa-data/latent_cache_train.npy'
     cache_val   : str = '/content/drive/MyDrive/cad-jepa-data/latent_cache_val.npy'
     data_root   : str = '/content'
-    ckpt_dir    : str = '/content/drive/MyDrive/cad-jepa-checkpoints/decoder'
+    # ckpt_dir    : str = '/content/drive/MyDrive/cad-jepa-checkpoints/decoder'
+    ckpt_dir        : str   = '/content/drive/MyDrive/cad-jepa-checkpoints/decoder_v2'
 
     # ── Decoder architecture (must match model/decoder.py defaults) ───────────
     latent_d    : int   = 512
     d_model     : int   = 512
     n_heads     : int   = 8
     n_layers    : int   = 6
+    n_mem       : int   = 8      # NEW — multi-token memory     # same
     d_ff        : int   = 2048
     dropout     : float = 0.1
     n_commands  : int   = 6
@@ -74,7 +76,8 @@ class ConfigDecoder:
     weight_decay    : float = 0.01
     grad_clip       : float = 1.0
     warmup_epochs   : int   = 5
-    label_smoothing : float = 0.1
+    # label_smoothing : float = 0.1
+    label_smoothing : float = 0.05   # was 0.1
 
     # ── Data ──────────────────────────────────────────────────────────────────
     num_workers   : int  = 4
@@ -188,6 +191,7 @@ class DecoderTrainer:
             n_args      = cfg.n_args,
             eos_idx     = cfg.eos_idx,
             max_len     = cfg.max_len,
+            n_mem       = cfg.n_mem,
         ).to(self.device)
 
         self.decoder.param_summary()

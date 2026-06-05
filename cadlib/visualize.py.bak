@@ -15,25 +15,6 @@ import trimesh
 from trimesh.sample import sample_surface
 import random
 
-def _ocp_wire_add_(topo_face, wire_or_shape):
-    try:
-        topo_face.Add(wire_or_shape); return
-    except TypeError: pass
-    try:
-        from OCP.TopoDS import topods as _td
-        topo_face.Add(_td.Wire(wire_or_shape)); return
-    except Exception: pass
-    try:
-        from OCP.TopoDS import TopoDS_Wire as _TW
-        w = _TW()
-        w.TShape(wire_or_shape.TShape())
-        w.Location(wire_or_shape.Location())
-        w.Orientation(wire_or_shape.Orientation())
-        topo_face.Add(w)
-    except Exception: pass
-
-
-
 
 def vec2CADsolid(vec, is_numerical=True, n=256):
     cad = CADSequence.from_vector(vec, is_numerical=is_numerical, n=256)
@@ -88,7 +69,7 @@ def create_profile_face(profile: Profile, sketch_plane: CoordSystem):
     all_loops = [create_loop_3d(loop, sketch_plane) for loop in profile.children]
     topo_face = BRepBuilderAPI_MakeFace(gp_face, all_loops[0])
     for loop in all_loops[1:]:
-        _ocp_wire_add_(topo_face, loop.Reversed())
+        topo_face.Add(loop.Reversed())
     return topo_face.Face()
 
 
@@ -147,9 +128,6 @@ def CADsolid2pc(shape, n_points, name=None):
         name = random.randint(100000, 999999)
     write_stl_file(shape, "tmp_out_{}.stl".format(name))
     out_mesh = trimesh.load("tmp_out_{}.stl".format(name))
-    try:
-        _f = "tmp_out_{}.stl".format(name)
-        os.remove(_f) if os.path.exists(_f) else None
-    except OSError: pass
+    os.system("rm tmp_out_{}.stl".format(name))
     out_pc, _ = sample_surface(out_mesh, n_points)
     return out_pc
