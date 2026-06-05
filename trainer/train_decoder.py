@@ -322,7 +322,8 @@ class DecoderTrainer:
             args     = batch['args'].to(self.device)        # [B, 60, 16]
 
             with torch.amp.autocast('cuda', dtype=torch.bfloat16):
-                cmd_logits, args_logits = self.decoder(z_target, commands, args)
+                # cmd_logits, args_logits = self.decoder(z_target, commands, args)
+                cmd_logits, args_logits = self.decoder(z_target)
                 # loss, metrics = decoder_loss(
                 #     cmd_logits, args_logits,
                 #     commands, args,
@@ -389,11 +390,15 @@ class DecoderTrainer:
 
             with torch.amp.autocast('cuda', dtype=torch.bfloat16):
                 cmd_logits, args_logits = self.decoder(z_target, commands, args)
-                loss, metrics = decoder_loss(
+                # loss, metrics = decoder_loss(
+                #     cmd_logits, args_logits,
+                #     commands, args,
+                #     eos_idx      = cfg.eos_idx,
+                #     label_smooth = cfg.label_smoothing,
+                # )
+                loss, metrics = nar_loss(
                     cmd_logits, args_logits,
                     commands, args,
-                    eos_idx      = cfg.eos_idx,
-                    label_smooth = cfg.label_smoothing,
                 )
 
             total_loss     += metrics['loss_total']
