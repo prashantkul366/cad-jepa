@@ -50,7 +50,8 @@ from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 class ConfigDecoder:
     # ── Paths ─────────────────────────────────────────────────────────────────
     cache_train : str = '/content/drive/MyDrive/cad-jepa-data/latent_cache_train.npy'
-    cache_val   : str = '/content/drive/MyDrive/cad-jepa-data/latent_cache_val.npy'
+    # cache_val   : str = '/content/drive/MyDrive/cad-jepa-data/latent_cache_val.npy'
+    cache_val   : str = '/content/drive/MyDrive/cad-jepa-data/latent_cache_validation.npy'
     data_root   : str = '/content'
     # ckpt_dir    : str = '/content/drive/MyDrive/cad-jepa-checkpoints/decoder'
     ckpt_dir        : str   = '/content/drive/MyDrive/cad-jepa-checkpoints/decoder_v2'
