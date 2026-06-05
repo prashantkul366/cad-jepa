@@ -37,7 +37,8 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 
 from dataset.cad_dataset import CADDataset
-from model.decoder_v2 import CADSequenceDecoder, decoder_loss
+# from model.decoder_v2 import CADSequenceDecoder, decoder_loss
+from model.decoder_nar import CADDecoderNAR, nar_loss
 from utils.schedulers import WarmupCosineSchedule
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 
@@ -58,7 +59,7 @@ class ConfigDecoder:
 
     # ── Decoder architecture (must match model/decoder.py defaults) ───────────
     latent_d    : int   = 512
-    d_model     : int   = 512
+    # d_model     : int   = 512
     n_heads     : int   = 8
     n_layers    : int   = 6
     n_mem       : int   = 8      # NEW — multi-token memory     # same
@@ -69,6 +70,10 @@ class ConfigDecoder:
     n_args      : int   = 16
     eos_idx     : int   = 3      # EOS_IDX from cadlib/macro.py
     max_len     : int   = 60     # MAX_TOTAL_LEN from cadlib/macro.py
+
+    d_model         : int   = 256    # decoder internal dim
+    n_layers_decode : int   = 4
+    dim_feedforward : int   = 512
 
     # ── Training ──────────────────────────────────────────────────────────────
     epochs          : int   = 100
@@ -180,19 +185,32 @@ class DecoderTrainer:
         self.train_loader, self.val_loader = self._build_loaders()
 
         # ── Model ─────────────────────────────────────────────────────────────
-        self.decoder = CADSequenceDecoder(
-            latent_d    = cfg.latent_d,
-            d_model     = cfg.d_model,
-            n_heads     = cfg.n_heads,
-            n_layers    = cfg.n_layers,
-            d_ff        = cfg.d_ff,
-            dropout     = cfg.dropout,
-            n_commands  = cfg.n_commands,
-            args_dim    = cfg.args_dim,
-            n_args      = cfg.n_args,
-            eos_idx     = cfg.eos_idx,
-            max_len     = cfg.max_len,
-            n_mem       = cfg.n_mem,
+        # self.decoder = CADSequenceDecoder(
+        #     latent_d    = cfg.latent_d,
+        #     d_model     = cfg.d_model,
+        #     n_heads     = cfg.n_heads,
+        #     n_layers    = cfg.n_layers,
+        #     d_ff        = cfg.d_ff,
+        #     dropout     = cfg.dropout,
+        #     n_commands  = cfg.n_commands,
+        #     args_dim    = cfg.args_dim,
+        #     n_args      = cfg.n_args,
+        #     eos_idx     = cfg.eos_idx,
+        #     max_len     = cfg.max_len,
+        #     n_mem       = cfg.n_mem,
+        # ).to(self.device)
+
+        self.decoder = CADDecoderNAR(
+            latent_d        = cfg.latent_d,
+            d_model         = cfg.d_model,
+            n_heads         = cfg.n_heads,
+            n_layers_decode = cfg.n_layers_decode,
+            dim_feedforward = cfg.dim_feedforward,
+            dropout         = cfg.dropout,
+            n_commands      = cfg.n_commands,
+            n_args          = cfg.n_args,
+            args_dim        = cfg.args_dim,
+            max_len         = cfg.max_len,
         ).to(self.device)
 
         self.decoder.param_summary()
@@ -304,11 +322,17 @@ class DecoderTrainer:
 
             with torch.amp.autocast('cuda', dtype=torch.bfloat16):
                 cmd_logits, args_logits = self.decoder(z_target, commands, args)
-                loss, metrics = decoder_loss(
+                # loss, metrics = decoder_loss(
+                #     cmd_logits, args_logits,
+                #     commands, args,
+                #     eos_idx      = cfg.eos_idx,
+                #     label_smooth = cfg.label_smoothing,
+                # )
+
+                # loss, metrics = nar_loss(cmd_l, arg_l, tgt_commands, tgt_args)
+                loss, metrics = nar_loss(
                     cmd_logits, args_logits,
                     commands, args,
-                    eos_idx      = cfg.eos_idx,
-                    label_smooth = cfg.label_smoothing,
                 )
 
             self.optimizer.zero_grad(set_to_none=True)
