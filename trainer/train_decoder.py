@@ -39,6 +39,7 @@ from torch.utils.data import DataLoader, Dataset
 from dataset.cad_dataset import CADDataset
 # from model.decoder_v2 import CADSequenceDecoder, decoder_loss
 from model.decoder_nar import CADDecoderNAR, nar_loss
+print("Imported CADDecoderNAR and nar_loss from model/decoder_nar.py")
 from utils.schedulers import WarmupCosineSchedule
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 
