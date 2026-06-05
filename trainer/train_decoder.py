@@ -216,9 +216,12 @@ class DecoderTrainer:
         
         _warmup = LinearLR(self.optimizer, start_factor=0.1,
                         total_iters=warmup_steps)
+        # _cosine = CosineAnnealingLR(self.optimizer,
+        #                             T_max=total_steps - warmup_steps,
+        #                             eta_min=1e-6)
         _cosine = CosineAnnealingLR(self.optimizer,
-                                    T_max=total_steps - warmup_steps,
-                                    eta_min=1e-6)
+                            T_max=max(total_steps - warmup_steps, 1),
+                            eta_min=1e-6)
         self.scheduler = SequentialLR(self.optimizer,
                                     schedulers=[_warmup, _cosine],
                                     milestones=[warmup_steps])
