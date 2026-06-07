@@ -104,7 +104,8 @@ class TextToLatentBridge(nn.Module):
         for p in self.clip_text.parameters():
             p.requires_grad = False
 
-        text_model = self.clip_text.text_model
+        # text_model = self.clip_text.text_model
+        text_model = self.clip_text
 
         # Unfreeze last (total - n_freeze) transformer layers
         for i, layer in enumerate(text_model.encoder.layers):
@@ -263,7 +264,8 @@ class TextToLatentBridge(nn.Module):
 
     def verify_freeze(self) -> None:
         """Assert freeze pattern is correct — call after init."""
-        text_model = self.clip_text.text_model
+        # text_model = self.clip_text.text_model
+        text_model = self.clip_text
         layers     = text_model.encoder.layers
 
         for i, layer in enumerate(layers):
