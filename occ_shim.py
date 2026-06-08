@@ -229,6 +229,15 @@ def _extend_stub(fullname):
 # Meta-path hook
 # =============================================================================
 
+def _copy_mod_attrs(src, dst):
+    """Copy non-dunder attributes (plus __getattr__) from src module to dst."""
+    for k, v in src.__dict__.items():
+        if k == '__getattr__':
+            dst.__getattr__ = v
+        elif not (k.startswith('__') and k.endswith('__')):
+            dst.__dict__[k] = v
+
+
 class _OCCBridge:
 
     def find_module(self, name, path=None):
