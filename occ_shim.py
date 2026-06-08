@@ -239,33 +239,30 @@ def _copy_mod_attrs(src, dst):
 
 
 class _OCCBridge:
-
-    def find_module(self, name, path=None):
-        if name == 'OCC' or name.startswith('OCC.'):
-            return self
+    def find_spec(self, fullname, path, target=None):
+        if fullname == 'OCC' or fullname.startswith('OCC.'):
+            import importlib.machinery
+            is_pkg = (fullname in ('OCC', 'OCC.Core') or
+                      fullname.startswith('OCC.Extend'))
+            return importlib.machinery.ModuleSpec(fullname, self, is_package=is_pkg)
         return None
 
-    def load_module(self, fullname):
-        if fullname in sys.modules:
-            return sys.modules[fullname]
+    def create_module(self, spec):
+        return None
+
+    def exec_module(self, module):
+        fullname = module.__name__
 
         if fullname == 'OCC':
-            mod = types.ModuleType('OCC')
-            mod.__path__ = []; mod.__package__ = 'OCC'; mod.__spec__ = None
-            sys.modules['OCC'] = mod; return mod
-
+            module.__path__ = []; module.__package__ = 'OCC'; return
         if fullname == 'OCC.Core':
-            mod = types.ModuleType('OCC.Core')
-            mod.__path__ = []; mod.__package__ = 'OCC.Core'; mod.__spec__ = None
-            sys.modules['OCC.Core'] = mod; return mod
+            module.__path__ = []; module.__package__ = 'OCC.Core'; return
 
         if fullname == 'OCC.Extend' or fullname.startswith('OCC.Extend.'):
-            mod = _extend_stub(fullname)
-            sys.modules[fullname] = mod; return mod
+            _copy_mod_attrs(_extend_stub(fullname), module); return
 
         if fullname in _COMPAT_PATCHES:
-            mod = _COMPAT_PATCHES[fullname]()
-            sys.modules[fullname] = mod; return mod
+            _copy_mod_attrs(_COMPAT_PATCHES[fullname](), module); return
 
         if fullname.startswith('OCC.Core.'):
             ocp_name = 'OCP.' + fullname[len('OCC.Core.'):]
@@ -276,14 +273,13 @@ class _OCCBridge:
 
         try:
             ocp_mod = importlib.import_module(ocp_name)
-            compat  = _make_compat_module(fullname, ocp_mod)
-            sys.modules[fullname] = compat; return compat
+            _copy_mod_attrs(_make_compat_module(fullname, ocp_mod), module)
         except ImportError:
             raise ImportError(
                 f"occ_shim: '{ocp_name}' not in cadquery-ocp "
                 f"(resolving '{fullname}')")
 
-
+    
 def install():
     if not any(isinstance(h, _OCCBridge) for h in sys.meta_path):
         sys.meta_path.insert(0, _OCCBridge())
