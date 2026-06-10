@@ -5,10 +5,11 @@ import json
 import h5py
 import random
 from cadlib.macro import *
+from dataset.masking import operation_block_mask
 
 # --- JEPA masking (add these 3 lines) ---
-from dataset.masking import operation_block_mask
-ctx_mask, tgt_mask = operation_block_mask(command)   # command is [S] tensor
+# from dataset.masking import operation_block_mask
+# ctx_mask, tgt_mask = operation_block_mask(command)   # command is [S] tensor
 
 def get_dataloader(phase, config, shuffle=None):
     is_shuffle = phase == 'train' if shuffle is None else shuffle
@@ -113,7 +114,15 @@ class CADDataset(Dataset):
         #     print(f"  args    : {args.shape}   dtype={args.dtype}")      # (60, 16)
         #     print(f"  command values : {command.tolist()}")
 
-        return {"command": command, "args": args, "id": data_id}
+        ctx_mask, tgt_mask = operation_block_mask(command)
+        return {
+            "command" : command,
+            "args"    : args,
+            "id"      : data_id,
+            "ctx_mask": ctx_mask,
+            "tgt_mask": tgt_mask,
+        }
+        # return {"command": command, "args": args, "id": data_id}
 
     def __len__(self):
         return len(self.all_data)
