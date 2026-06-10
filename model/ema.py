@@ -10,9 +10,18 @@ import torch.nn as nn
 
 class EMATargetEncoder:
 
+    # def __init__(self, online_encoder: nn.Module, tau: float = 0.996):
+    #     self.tau = tau
+    #     self.target = copy.deepcopy(online_encoder)
+    #     for p in self.target.parameters():
+    #         p.requires_grad_(False)
     def __init__(self, online_encoder: nn.Module, tau: float = 0.996):
         self.tau = tau
-        self.target = copy.deepcopy(online_encoder)
+        # deepcopy on CPU — avoids CUDA dispatch issues with RotaryEmbedding
+        device = next(online_encoder.parameters()).device
+        self.target = copy.deepcopy(online_encoder.cpu())
+        online_encoder.to(device)
+        self.target.to(device)
         for p in self.target.parameters():
             p.requires_grad_(False)
 
