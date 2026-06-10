@@ -61,6 +61,40 @@ class CADJEPAEncoder(nn.Module):
         self.mask_token = nn.Parameter(torch.zeros(1, 1, cfg.d_model))
         nn.init.normal_(self.mask_token, std=0.02)
 
+    # def forward(self, commands, args, jepa_mask=None):
+    #     """
+    #     commands  : [N, S]      int64
+    #     args      : [N, S, 16]  int64
+    #     jepa_mask : [N, S]      bool — True = hide from context encoder
+
+    #     returns   : [N, S, d_model]
+    #     """
+    #     commands_, args_ = _make_seq_first(commands, args)       # [S,N], [S,N,16]
+    #     key_padding_mask = _get_key_padding_mask(commands_, seq_dim=0)  # [N,S]
+
+    #     # JEPA CHANGE 1: hide semantically masked blocks from context encoder
+    #     # if jepa_mask is not None:
+    #     #     key_padding_mask = key_padding_mask | jepa_mask
+
+    #     src    = self.embedding(commands_, args_)                  # [S,N,d]
+    #     memory = self.encoder(src, mask=None,
+    #                           src_key_padding_mask=key_padding_mask)
+
+    #     # REPLACE with
+    #     if jepa_mask is not None:
+    #         # [S, N, d] — True at target positions
+    #         hide = jepa_mask.permute(1, 0).unsqueeze(-1).expand_as(src)
+    #         src  = torch.where(hide, self.mask_token.expand_as(src), src)
+
+    #     src    = self.embedding(commands_, args_)                  # [S,N,d]
+    #     memory = self.encoder(src, mask=None,
+    #                           src_key_padding_mask=key_padding_mask)
+    #         # key_padding_mask unchanged — only real EOS/pad excluded as keys
+    #     # JEPA CHANGE 2: no bottleneck — return full d_model
+    #     # JEPA CHANGE 3: return ALL positions, not mean-pooled
+    #     # return _make_batch_first(memory)                           # [N,S,d]
+    #     return self.output_norm(_make_batch_first(memory))
+    
     def forward(self, commands, args, jepa_mask=None):
         """
         commands  : [N, S]      int64
@@ -69,31 +103,21 @@ class CADJEPAEncoder(nn.Module):
 
         returns   : [N, S, d_model]
         """
-        commands_, args_ = _make_seq_first(commands, args)       # [S,N], [S,N,16]
+        commands_, args_ = _make_seq_first(commands, args)          # [S,N], [S,N,16]
         key_padding_mask = _get_key_padding_mask(commands_, seq_dim=0)  # [N,S]
 
-        # JEPA CHANGE 1: hide semantically masked blocks from context encoder
-        # if jepa_mask is not None:
-        #     key_padding_mask = key_padding_mask | jepa_mask
+        src = self.embedding(commands_, args_)                      # [S,N,d]
 
-        src    = self.embedding(commands_, args_)                  # [S,N,d]
-        memory = self.encoder(src, mask=None,
-                              src_key_padding_mask=key_padding_mask)
-
-        # REPLACE with
+        # JEPA: replace target token content with learned mask token
+        # must happen AFTER embedding, BEFORE encoder
         if jepa_mask is not None:
-            # [S, N, d] — True at target positions
-            hide = jepa_mask.permute(1, 0).unsqueeze(-1).expand_as(src)
+            hide = jepa_mask.permute(1, 0).unsqueeze(-1).expand_as(src)  # [S,N,d]
             src  = torch.where(hide, self.mask_token.expand_as(src), src)
 
-        src    = self.embedding(commands_, args_)                  # [S,N,d]
         memory = self.encoder(src, mask=None,
-                              src_key_padding_mask=key_padding_mask)
-            # key_padding_mask unchanged — only real EOS/pad excluded as keys
-        # JEPA CHANGE 2: no bottleneck — return full d_model
-        # JEPA CHANGE 3: return ALL positions, not mean-pooled
-        # return _make_batch_first(memory)                           # [N,S,d]
-        return self.output_norm(_make_batch_first(memory))
+                            src_key_padding_mask=key_padding_mask)
+
+        return self.output_norm(_make_batch_first(memory))          # [N,S,d]
     
     @torch.no_grad()
     def encode_mean(self, commands, args):

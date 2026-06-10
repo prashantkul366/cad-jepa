@@ -84,7 +84,7 @@ sys.path.insert(0, '/content/cad-jepa')
 from types import SimpleNamespace
 from config.configJEPA import ConfigJEPA
 from dataset.cad_dataset import CADDataset
-from dataset.masks.multiblock_cad import CADMaskCollator
+# from dataset.masks.multiblock_cad import CADMaskCollator
 from model.jepa_encoder import CADJEPAEncoder
 from model.predictor import CADPredictor
 from trainer.trainerJEPA import TrainerJEPA
@@ -97,10 +97,14 @@ cfg.num_workers = 4
 cfg.batch_size  = 256
 
 dataset  = CADDataset('train', cfg)
-collator = CADMaskCollator(cfg.mask_ratio)
-loader   = DataLoader(dataset, batch_size=cfg.batch_size, shuffle=True,
-                      num_workers=cfg.num_workers, collate_fn=collator,
-                      pin_memory=True)
+# collator = CADMaskCollator(cfg.mask_ratio)
+# loader   = DataLoader(dataset, batch_size=cfg.batch_size, shuffle=True,
+#                       num_workers=cfg.num_workers, collate_fn=collator,
+#                       pin_memory=True)
+
+loader = DataLoader(dataset, batch_size=cfg.batch_size, shuffle=True,
+                    num_workers=cfg.num_workers,
+                    pin_memory=True)
 
 enc  = CADJEPAEncoder(cfg)
 pred = CADPredictor(cfg)
