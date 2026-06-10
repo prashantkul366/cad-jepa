@@ -57,7 +57,9 @@ class TrainerJEPA:
             h_tgt = self.ema(commands, args).detach()   # [B, S, d]
 
         # Step 2 — context encoder: masked blocks hidden via key_padding_mask
-        h_ctx = self.enc(commands, args, jepa_mask=context_mask)  # [B, S, d]
+        # h_ctx = self.enc(commands, args, jepa_mask=context_mask)  # [B, S, d]
+        # REPLACE with
+        h_ctx = self.enc(commands, args, jepa_mask=target_mask)
 
         # Step 3 — gather masked position indices per sample
         masked_idx_list = [
@@ -77,7 +79,10 @@ class TrainerJEPA:
         ])  # [B, max_n]
 
         # Step 4 — predictor
-        h_pred = self.pred(h_ctx, padded)               # [B, max_n, d]
+        # h_pred = self.pred(h_ctx, padded)               # [B, max_n, d]
+        # REPLACE with
+        h_ctx_clean = h_ctx.masked_fill(target_mask.unsqueeze(-1), 0.0)
+        h_pred = self.pred(h_ctx_clean, padded)
 
         # Step 5 — gather targets at masked positions
         d = h_tgt.size(-1)
@@ -126,7 +131,13 @@ class TrainerJEPA:
         self.ema.set_tau(self._tau_schedule(epoch))
 
         total, n_steps = 0.0, 0
-        for commands, args, ctx_mask, tgt_mask in self.loader:
+        # for commands, args, ctx_mask, tgt_mask in self.loader:
+        # REPLACE with (if loader returns dicts)
+        for batch in self.loader:
+            commands    = batch['command']
+            args        = batch['args']
+            ctx_mask    = batch['ctx_mask']
+            tgt_mask    = batch['tgt_mask']
             self.optimizer.zero_grad()
             # loss = self.train_step(commands, args, ctx_mask, tgt_mask)
             # with torch.cuda.amp.autocast(dtype=torch.bfloat16):
