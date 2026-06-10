@@ -7,7 +7,7 @@ import random
 from cadlib.macro import *
 
 # --- JEPA masking (add these 3 lines) ---
-from data.masking import operation_block_mask
+from dataset.masking import operation_block_mask
 ctx_mask, tgt_mask = operation_block_mask(command)   # command is [S] tensor
 
 def get_dataloader(phase, config, shuffle=None):
