@@ -75,3 +75,28 @@ class ConfigJEPA:
     dim_z             = 256   # same as d_model (no bottleneck in JEPA)
     n_layers_decode   = 4
     
+    # ── Stage 2B — Latent Predictor ────────────────────────────────────
+    n_predictor_blocks     = 6
+    predictor_lr           = 5e-5
+    predictor_epochs       = 100
+    predictor_warmup_epochs = 5
+    predictor_save_every   = 10
+    predictor_ckpt_dir     = './checkpoints/predictor'
+    predictor_ckpt_best    = './checkpoints/predictor/best.pt'
+
+    # ── Stage 3A — Decoder ─────────────────────────────────────────────
+    n_decoder_layers       = 12
+    decoder_lr             = 1e-4
+    decoder_epochs         = 300
+    decoder_warmup_epochs  = 20
+    decoder_batch_size     = 128
+    decoder_save_every     = 25
+    decoder_ckpt_dir       = './checkpoints/decoder'
+    decoder_ckpt_best      = './checkpoints/decoder/best.pt'
+
+    # ── Stage 3B — End-to-end finetune ─────────────────────────────────
+    s3b_lr                 = 1e-5
+    s3b_epochs             = 50
+    s3b_warmup_epochs      = 3
+    s3b_batch_size         = 64
+    s3b_ckpt_dir           = './checkpoints/stage3b'
