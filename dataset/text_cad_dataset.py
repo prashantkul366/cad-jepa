@@ -101,7 +101,10 @@ class TextCADDataset(Dataset):
         bert_path = getattr(cfg, 'bert_tokens_path', None)
         if bert_path and os.path.exists(bert_path):
             print(f"Loading precomputed BERT tokens from {bert_path}...")
-            tok_data         = torch.load(bert_path, weights_only=True)
+        
+            # tok_data         = torch.load(bert_path, weights_only=True)
+            # SIMPLEST FIX
+            tok_data = torch.load(bert_path, weights_only=False)
             self.input_ids   = tok_data['input_ids']
             self.attn_masks  = tok_data['attention_mask']
             self.use_precomp = True
