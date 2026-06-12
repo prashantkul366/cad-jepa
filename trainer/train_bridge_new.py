@@ -12,6 +12,7 @@ Stop training when: val cos_sim > 0.82 AND val rank stable for 5 epochs.
 import os, sys, math, torch
 import torch.nn as nn
 import torch.nn.functional as F
+import time
 
 sys.path.insert(0, '/content/cad-jepa')
 from config.configJEPA           import ConfigJEPA
@@ -125,15 +126,18 @@ def train_bridge(cfg):
     STOP_PATIENCE  = 10
 
     for epoch in range(1, cfg.bridge_epochs + 1):
+        t0 = time.time()
         tr = run_epoch(bridge, train_loader, optimizer, scheduler, cfg, device, train=True)
         vl = run_epoch(bridge, val_loader,   optimizer, scheduler, cfg, device, train=False)
+        elapsed = time.time() - t0
 
         print(
             f"Epoch {epoch:4d}/{cfg.bridge_epochs} | "
             f"loss={tr['loss']:.4f}/{vl['loss']:.4f} | "
             f"cos={tr['cos_sim']:.3f}/{vl['cos_sim']:.3f} | "
             f"rank={tr['rank']:.1f}/{vl['rank']:.1f} | "
-            f"var={vl['var']:.3f} cov={vl['cov']:.4f}"
+            f"var={vl['var']:.3f} cov={vl['cov']:.4f} | "
+            f"time={elapsed:.0f}s"
         )
 
         # checkpoint
