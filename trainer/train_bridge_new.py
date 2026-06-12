@@ -125,7 +125,22 @@ def train_bridge(cfg):
     no_improve     = 0
     STOP_PATIENCE  = 10
 
-    for epoch in range(1, cfg.bridge_epochs + 1):
+    
+    # ── INSIDE train_bridge(), before the epoch loop ─────────────────
+    # resume from best if exists
+    best_path = os.path.join(cfg.bridge_ckpt_dir, 'best.pt')
+    start_epoch = 1
+    if os.path.exists(best_path):
+        ckpt = torch.load(best_path, map_location=device)
+        bridge.load_state_dict(ckpt['bridge'])
+        start_epoch = ckpt['epoch'] + 1
+        best_cos_sim = ckpt['cos_sim']
+        print(f"Resumed from epoch {ckpt['epoch']} | cos_sim={ckpt['cos_sim']:.4f}")
+
+
+    # change range to use start_epoch
+    for epoch in range(start_epoch, cfg.bridge_epochs + 1):
+    # for epoch in range(1, cfg.bridge_epochs + 1):
         t0 = time.time()
         tr = run_epoch(bridge, train_loader, optimizer, scheduler, cfg, device, train=True)
         vl = run_epoch(bridge, val_loader,   optimizer, scheduler, cfg, device, train=False)
